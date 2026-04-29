@@ -1,0 +1,1999 @@
+if getgenv().MystrixHub then
+    if MystrixHub.ConnectionController and MystrixHub.ConnectionController.Connections then
+        for i, v in next, MystrixHub.ConnectionController.Connections do
+            pcall(function() v:Disconnect() end)
+            MystrixHub.ConnectionController.Connections[i] = nil
+        end
+    end
+    if MystrixHub.TasksController and MystrixHub.TasksController.Tasks then
+        for i, v in next, MystrixHub.TasksController.Tasks do
+            pcall(function() task.cancel(v) end)
+            MystrixHub.TasksController.Tasks[i] = nil
+        end
+    end
+    if MystrixHub.UIController then
+        local UI = MystrixHub.UIController
+        if UI.FPSConnection  then pcall(function() UI.FPSConnection:Disconnect()  end) end
+        if UI.PingConnection then pcall(function() UI.PingConnection:Disconnect() end) end
+        if UI.BGWatcher      then pcall(function() UI.BGWatcher:Disconnect()      end) end
+    end
+    pcall(function()
+        for _, sg in ipairs(cloneref(game:GetService("CoreGui")):GetChildren()) do
+            if sg.Name == "WindUI" then sg:Destroy() end
+        end
+    end)
+    getgenv().MystrixHub = nil
+    getgenv().WindUI     = nil
+    task.wait(0.2)
+end
+
+local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
+local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
+local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
+
+local CURRENT_VERSION  = "v1.0"
+local DISCORD_INVITE   = "XV66VWqAaN"
+local HUB_LOGO         = "rbxassetid://85997568026025"
+local GAME_FOLDER_NAME = "MystrixHubKAL"
+local GAME_FOLDER_PATH = "WindUI/" .. GAME_FOLDER_NAME
+local EXEC_DATA_FILE   = "WindUI/NebulAuth_ExecData.json"
+local USE_KEY_SYSTEM   = true
+
+local Services = setmetatable({}, {
+    __index = function(_, Index)
+        return cloneref(game:GetService(Index))
+    end
+})
+
+local Players            = Services.Players
+local RunService         = Services.RunService
+local HttpService        = Services.HttpService
+local MarketplaceService = Services.MarketplaceService
+local ReplicatedStorage  = Services.ReplicatedStorage
+local CoreGui            = Services.CoreGui
+local TweenService       = Services.TweenService
+local Stats              = Services.Stats
+
+local LocalPlayer = Players.LocalPlayer
+local request     = (syn and syn.request) or http_request or request
+
+makefolder("WindUI")
+makefolder(GAME_FOLDER_PATH)
+
+getgenv().MystrixHub = {
+
+    Meta = {
+        Version      = CURRENT_VERSION,
+        Discord      = DISCORD_INVITE,
+        Logo         = HUB_LOGO,
+        FolderName   = GAME_FOLDER_NAME,
+        FolderPath   = GAME_FOLDER_PATH,
+        ExecDataFile = EXEC_DATA_FILE,
+        GameName     = "Unknown Game",
+        ServerName   = "Mystrix Hub",
+        MemberCount  = "Fetching...",
+        OnlineCount  = "Fetching...",
+    },
+
+    Auth = {
+        BaseURL       = NEBULAUTH_BASE_URL,
+        ApiToken      = NEBULAUTH_API_TOKEN,
+        SigningSecret = NEBULAUTH_SIGNING_SECRET,
+        UseKeySystem  = USE_KEY_SYSTEM,
+        KeyResult     = nil,
+        KeyError      = nil,
+    },
+
+    TimeController = {
+        CachedOffset = nil,
+        LastSync     = 0,
+    },
+
+    PlayerController = {
+        Player    = LocalPlayer,
+        PlayerGui = LocalPlayer.PlayerGui,
+        HWID      = nil,
+    },
+
+    UIController = {
+        Window         = nil,
+        WindUI         = nil,
+        Tabs           = {},
+        VersionTag     = nil,
+        FPSTag         = nil,
+        PingTag        = nil,
+        FPSConnection  = nil,
+        PingConnection = nil,
+        BGWatcher      = nil,
+        WinBG          = nil,
+        BGTransparency = 0.15,
+        CurrentTheme   = "Dark",
+        ThemeFirstLoad = true,
+        ThemeAccents   = {
+            Sky              = Color3.fromHex("#00d4ff"),
+            Dark             = Color3.fromHex("#6c63ff"),
+            Light            = Color3.fromHex("#ff6b6b"),
+            Rose             = Color3.fromHex("#f43f5e"),
+            Plant            = Color3.fromHex("#65a30d"),
+            Red              = Color3.fromHex("#ef4444"),
+            Indigo           = Color3.fromHex("#6366f1"),
+            Violet           = Color3.fromHex("#8b5cf6"),
+            Amber            = Color3.fromHex("#f59e0b"),
+            Emerald          = Color3.fromHex("#10b981"),
+            Midnight         = Color3.fromHex("#1e293b"),
+            Crimson          = Color3.fromHex("#e11d48"),
+            Mellowsi         = Color3.fromHex("#f472b6"),
+            Rainbow          = Color3.fromHex("#ff0080"),
+            ["Monokai Pro"]  = Color3.fromHex("#fc9867"),
+            ["Cotton Candy"] = Color3.fromHex("#ec4899"),
+        },
+        CurrentAccent = Color3.fromHex("#6c63ff"),
+    },
+
+    ConfigController = {
+        Cache          = {},
+        SelectedConfig = nil,
+        NameInput      = "MystrixHub",
+        LastConfigFile = GAME_FOLDER_PATH .. "/LastConfig.txt",
+        AutoLoadFile   = GAME_FOLDER_PATH .. "/AutoLoad.txt",
+        Dropdown       = nil,
+    },
+
+    KeyDisplay = {
+        StatusText   = "Verified",
+        KeyIdText    = "N/A",
+        KeyLabelText = "N/A",
+        ExpiryText   = "N/A",
+        TimeLeftText = "Unlimited",
+        HwidDisplay  = "N/A",
+        ResetText    = "No",
+        ExecCountStr = "INF",
+    },
+
+    RarityData = {
+        Common    = {"Fruli Frula","Lirili Larila","Noobini Pizzanini","Pipi Kiwi","Svinina Bombardino","Talpa Di Fero","Tim Cheese","Trippi Troppi"},
+        Rare      = {"Ballerina Cappuccina","Bobrito Bandito","Boneca Ambalabu","Brr Brr Patapim","Cacto Hipopotamo","Cappuccino Assassino","Gangster Footera","Ta Ta Ta Ta Sahur"},
+        Epic      = {"Garamararam","Gattatino Nyanino","John Pork","Madung","Mangolini Parrocini","Orcalero","Pannaburro","Pesto Mortioni","Waterdino"},
+        Legendary = {"Bambini Crostini","Bananita Dolphinita","Capi Taco","Chimpanzini Bananini","Elefantucci Bananucci","Plan Blue","Plan Red","Salamino Pinguino","Trulimero Trulicina"},
+        Mythic    = {"67","Bangello","Burbaloni Luliloli","Capybara Eggplant","Chef Crabracadabra","Elefanto Frigo","Glorbo Fruttodrillo","Penguino Cocosino","Rinooccio Verdini"},
+        Godly     = {"Bombardiro Crocodilo","Frigo Camelo","Octopusini Bluberini","Orangutini Ananasini","Pandaccini Bananini","Rhino Toasterino","Sigma Boy","Strawberelli Flamingelli","Udin Din Din Dun"},
+        Secret    = {"Bombini Gusini","Burguro","Cavallo Virtuso","Cocofanto Elefanto","Fryuro","Gorillo Watermelondrillo","Guest666","Tuff Toucan","Zibra Zubra Zibralini"},
+        OG        = {"Blackhole Goat","Cappuccino Clownino","Chillin Chilli","Compactoroni Diskaloni","Corn Sahur","Crazylone Pizaione","Karkerkar Kurkur","Meowl","Nuclearo Dinossaurol","Strawberry Elephant"},
+        Hacked    = {"Agarrini La Palini","Alessio","Cactus Pingu","La Vacca Saturno Saturnita","Los Primos Blue","SWAG SODA","Stoppo Luminino","Tictac Sahur","Torrtuginni Dragonfrutini","Tripi Tropi Tropa Tripa"},
+        Divine    = {"1x1x1x1","Dipperi Chiperini","Espresso Signora","Girafa Celeste","Matteo","Peant Jarro","Rexosaurus","Tralalerita Tralala","Tralalero Tralala"},
+        Celestial = {"Anpali Babel","Beluga Beluga","Chicleteira Bicicleteira","Dragonfrutina Dolphinita","Guerriro Digitale","Ketupat Kepat","Krupuk Pagi Pagi","Mastodontico Telepiedone","Pot Hotspot","Tralaledon"},
+        Exclusive = {"Dragon Cannelloni","Esok Sekolah","Spaghetti Tualetti","W"},
+    },
+
+    RarityOrder = {"Common","Rare","Epic","Legendary","Mythic","Godly","Secret","OG","Hacked","Divine","Celestial","Exclusive"},
+
+    WeightNames = {
+        "Giant Gold Star Barbell","Neon Pulse","Mega Golden Barbell","Heaven Plate",
+        "Golden Barbell","Donut Barbell","Ice Barbell","Iron Plate","Copper Plate",
+        "Stone Block","Bone Barbell","Wooden Stick",
+    },
+
+    WeightsBestOrder = {
+        "Wooden Stick","Bone Barbell","Stone Block","Copper Plate","Iron Plate",
+        "Ice Barbell","Donut Barbell","Golden Barbell","Heaven Plate",
+        "Mega Golden Barbell","Neon Pulse","Giant Gold Star Barbell",
+    },
+
+    CoinsController = {
+        Running = false,
+        Loop    = nil,
+        Delay   = 1,
+    },
+
+    UpgradeController = {
+        SlotDisplayMap    = {},
+        Dropdown          = nil,
+        AutoRunning       = false,
+        AutoLoop          = nil,
+        RarityDropdown    = nil,
+        AutoRarityRunning = false,
+        AutoRarityLoop    = nil,
+    },
+
+    SlotsController = {
+        AutoRunning = false,
+        AutoLoop    = nil,
+    },
+
+    SpeedController = {
+        Amount      = 1,
+        AutoRunning = false,
+        AutoLoop    = nil,
+    },
+
+    WeightsController = {
+        Dropdown    = nil,
+        AutoRunning = false,
+        AutoLoop    = nil,
+    },
+
+    RebirthController = {
+        AutoRunning = false,
+        AutoLoop    = nil,
+    },
+
+    SellController = {
+        SelectedRarities    = {},
+        AutoRunning         = false,
+        AutoLoop            = nil,
+        AutoDelay           = 5,
+        SpecificSelected    = {},
+        SpecificAutoRunning = false,
+        SpecificAutoLoop    = nil,
+        SpecificDelay       = 5,
+    },
+
+    LiftController = {
+        AutoRunning = false,
+        AutoLoop    = nil,
+    },
+
+    FarmController = {
+        Running              = false,
+        Loop                 = nil,
+        SelectedRarities     = {},
+        SelectedMutations    = {"Any"},
+        SelectedSpecific     = {},
+        TweenSpeedMultiplier = 20,
+    },
+
+    ConnectionController = {
+        Connections = {},
+    },
+
+    TasksController = {
+        Tasks = {},
+    },
+
+    Functions = {},
+}
+
+if MystrixHub.ConnectionController.Connections then
+    for i, v in next, MystrixHub.ConnectionController.Connections do
+        pcall(function() v:Disconnect() end)
+        MystrixHub.ConnectionController.Connections[i] = nil
+    end
+end
+
+if MystrixHub.TasksController.Tasks then
+    for i, v in next, MystrixHub.TasksController.Tasks do
+        pcall(function() task.cancel(v) end)
+        MystrixHub.TasksController.Tasks[i] = nil
+    end
+end
+
+function MystrixHub.ConnectionController.Insert(Connection)
+    table.insert(MystrixHub.ConnectionController.Connections, Connection)
+end
+
+function MystrixHub.TasksController.Insert(Task)
+    table.insert(MystrixHub.TasksController.Tasks, Task)
+end
+
+function MystrixHub.Functions.HexToBytes(hex)
+    return (hex:gsub("..", function(cc) return string.char(tonumber(cc, 16)) end))
+end
+
+function MystrixHub.Functions.BytesToHex(s)
+    return (s:gsub(".", function(c) return string.format("%02x", string.byte(c)) end))
+end
+
+function MystrixHub.Functions.IsHex(s, n)
+    if not s then return false end
+    if n and #s ~= n then return false end
+    return s:match("^[0-9a-fA-F]+$") ~= nil
+end
+
+function MystrixHub.Functions.NormaliseSHA256(r)
+    if not r or r == "" then return nil end
+    if #r == 64 and MystrixHub.Functions.IsHex(r, 64) then return MystrixHub.Functions.HexToBytes(r)
+    elseif #r == 32 then return r
+    elseif MystrixHub.Functions.IsHex(r) then return MystrixHub.Functions.HexToBytes(r) end
+    return r
+end
+
+function MystrixHub.Functions.SHA256Bytes(data)
+    local ok, result
+    ok, result = pcall(function() return crypt and crypt.hash and crypt.hash(data, "sha256") end)
+    if ok and result and result ~= "" then local n = MystrixHub.Functions.NormaliseSHA256(result) if n then return n end end
+    ok, result = pcall(function() return HttpService:SHA256(data) end)
+    if ok and result and result ~= "" then local n = MystrixHub.Functions.NormaliseSHA256(result) if n then return n end end
+    ok, result = pcall(function() return crypto and crypto.sha256 and crypto.sha256(data) end)
+    if ok and result and result ~= "" then local n = MystrixHub.Functions.NormaliseSHA256(result) if n then return n end end
+    return nil
+end
+
+function MystrixHub.Functions.SHA256(data)
+    local b = MystrixHub.Functions.SHA256Bytes(data)
+    if not b then return "" end
+    return MystrixHub.Functions.BytesToHex(b)
+end
+
+function MystrixHub.Functions.HMACSHA256(key, message)
+    local block_size = 64
+    local keyBytes = (#key > block_size) and MystrixHub.Functions.SHA256Bytes(key) or key
+    if not keyBytes then return "" end
+    while #keyBytes < block_size do keyBytes = keyBytes .. "\0" end
+    local ipad, opad = {}, {}
+    for i = 1, block_size do
+        local b = string.byte(keyBytes, i)
+        ipad[i] = string.char(bit32.bxor(b, 0x36))
+        opad[i] = string.char(bit32.bxor(b, 0x5c))
+    end
+    local innerHash = MystrixHub.Functions.SHA256Bytes(table.concat(ipad) .. message)
+    if not innerHash then return "" end
+    return MystrixHub.Functions.SHA256(table.concat(opad) .. innerHash)
+end
+
+function MystrixHub.Functions.CleanKey(key)
+    if not key then return "" end
+    key = tostring(key)
+    key = key:match("^%s*(.-)%s*$")
+    key = key:gsub("[%z\1-\8\11\12\14-\31\127]", "")
+    key = key:gsub("\226\128\139", "")
+    key = key:gsub("\226\128\138", "")
+    key = key:gsub("\239\187\191", "")
+    key = key:gsub("[^%w%-_]", "")
+    return key
+end
+
+function MystrixHub.Functions.MakeRawRequest(url, method, headers, body)
+    local args = { Url = url, Method = method or "GET" }
+    if headers then args.Headers = headers end
+    if body    then args.Body    = body    end
+    if request then local ok, r = pcall(request, args) if ok and r then return r end end
+    if syn and syn.request then local ok, r = pcall(syn.request, args) if ok and r then return r end end
+    if http and http.request then local ok, r = pcall(http.request, args) if ok and r then return r end end
+    if http_request then local ok, r = pcall(http_request, args) if ok and r then return r end end
+    return nil
+end
+
+function MystrixHub.Functions.TryParseUnixMs(resp)
+    if not (resp and resp.Body) then return nil end
+    local ok, data = pcall(function() return HttpService:JSONDecode(resp.Body) end)
+    if not ok or not data then return nil end
+    if data.unixtime     then return math.floor(data.unixtime * 1000) end
+    if data.now          then return math.floor(data.now * 1000) end
+    if data.dateTime     then local ok2, dt = pcall(function() return DateTime.fromIsoDate(data.dateTime) end) if ok2 and dt then return dt.UnixTimestampMillis end end
+    if data.utc_datetime then local ok2, dt = pcall(function() return DateTime.fromIsoDate(data.utc_datetime) end) if ok2 and dt then return dt.UnixTimestampMillis end end
+    return nil
+end
+
+function MystrixHub.Functions.TryParseDateHeader(resp)
+    if not (resp and resp.Headers) then return nil end
+    local dh = resp.Headers["date"] or resp.Headers["Date"]
+    if not dh then return nil end
+    local day, mon, year, h, m, s = dh:match("(%d+) (%a+) (%d+) (%d+):(%d+):(%d+)")
+    local months = {Jan=1,Feb=2,Mar=3,Apr=4,May=5,Jun=6,Jul=7,Aug=8,Sep=9,Oct=10,Nov=11,Dec=12}
+    if day and mon and year and months[mon] then
+        local ok, ts = pcall(os.time, {year=tonumber(year),month=months[mon],day=tonumber(day),hour=tonumber(h),min=tonumber(m),sec=tonumber(s)})
+        if ok then return ts * 1000 end
+    end
+    return nil
+end
+
+function MystrixHub.Functions.SyncServerTime()
+    local TC = MystrixHub.TimeController
+    if TC.CachedOffset ~= nil and (os.time() - TC.LastSync) < 60 then return true end
+    for _, url in ipairs({"https://worldtimeapi.org/api/timezone/Etc/UTC","https://timeapi.io/api/Time/current/zone?timeZone=UTC"}) do
+        local ok, resp = pcall(MystrixHub.Functions.MakeRawRequest, url, "GET", {["Accept"]="application/json"}, nil)
+        if ok and resp then local ms = MystrixHub.Functions.TryParseUnixMs(resp) if ms then TC.CachedOffset = ms - DateTime.now().UnixTimestampMillis TC.LastSync = os.time() return true end end
+    end
+    for _, url in ipairs({"https://www.google.com/","https://www.roblox.com/","https://discord.com/"}) do
+        local ok, resp = pcall(MystrixHub.Functions.MakeRawRequest, url, "GET", nil, nil)
+        if ok and resp then local ms = MystrixHub.Functions.TryParseDateHeader(resp) if ms then TC.CachedOffset = ms - DateTime.now().UnixTimestampMillis TC.LastSync = os.time() return true end end
+    end
+    TC.CachedOffset = 0 TC.LastSync = os.time() return false
+end
+
+function MystrixHub.Functions.GetAccurateTimestampMs(extra)
+    local TC = MystrixHub.TimeController
+    if TC.CachedOffset == nil then MystrixHub.Functions.SyncServerTime() end
+    return tostring(DateTime.now().UnixTimestampMillis + (TC.CachedOffset or 0) + (extra or 0))
+end
+
+function MystrixHub.Functions.GetHWID()
+    local hwid
+    for _, m in ipairs({
+        function() return gethwid and gethwid() end,
+        function() return game:GetService("RbxAnalyticsService"):GetClientId() end,
+        function() return game:GetService("UserIdService"):GetUserId() end,
+    }) do
+        local ok, r = pcall(m)
+        if ok and r and r ~= "" then hwid = tostring(r) break end
+    end
+    if not hwid or hwid == "" then
+        local uid = LocalPlayer and LocalPlayer.UserId or 0
+        hwid = MystrixHub.Functions.SHA256("USER_" .. uid .. "_" .. game.PlaceId):sub(1, 32)
+    end
+    return hwid
+end
+
+function MystrixHub.Functions.BuildAndSendRequest(bodyString, bodyHash, extra)
+    local ts        = MystrixHub.Functions.GetAccurateTimestampMs(extra)
+    local nonce     = HttpService:GenerateGUID(false):gsub("-", "")
+    local canonical = "POST\n/keys/verify\n" .. ts .. "\n" .. nonce .. "\n" .. bodyHash
+    local sig       = MystrixHub.Functions.HMACSHA256(MystrixHub.Auth.SigningSecret, canonical)
+    return MystrixHub.Functions.MakeRawRequest(MystrixHub.Auth.BaseURL .. "/api/v1/keys/verify", "POST", {
+        ["Content-Type"]  = "application/json",
+        ["Authorization"] = "Bearer " .. MystrixHub.Auth.ApiToken,
+        ["X-Timestamp"]   = ts,
+        ["X-Nonce"]       = nonce,
+        ["X-Signature"]   = sig,
+        ["X-Body-Sha256"] = bodyHash,
+        ["X-Hwid"]        = MystrixHub.Functions.GetHWID() or ""
+    }, bodyString)
+end
+
+function MystrixHub.Functions.VerifyKey(userKey)
+    userKey = MystrixHub.Functions.CleanKey(userKey)
+    if not userKey or #userKey < 10 then return false, "INVALID_KEY" end
+    local hwid       = MystrixHub.Functions.GetHWID()
+    local reqBody    = { key = userKey, requestId = HttpService:GenerateGUID(false):gsub("-","") }
+    if hwid and hwid ~= "" then reqBody.hwid = hwid end
+    local bodyString = HttpService:JSONEncode(reqBody)
+    local bodyHash   = MystrixHub.Functions.SHA256(bodyString)
+    local resp       = MystrixHub.Functions.BuildAndSendRequest(bodyString, bodyHash, 0)
+    local statusCode = resp and resp.StatusCode
+    local response   = resp and resp.Body
+    if statusCode == 401 then
+        MystrixHub.TimeController.CachedOffset = nil
+        MystrixHub.TimeController.LastSync = 0
+        MystrixHub.Functions.SyncServerTime()
+        for _, offset in ipairs({0, 30000, -30000, 60000, -60000}) do
+            resp       = MystrixHub.Functions.BuildAndSendRequest(bodyString, bodyHash, offset)
+            statusCode = resp and resp.StatusCode
+            response   = resp and resp.Body
+            if statusCode ~= 401 then break end
+        end
+    end
+    if not response then return false, "NETWORK_ERROR" end
+    local ok, data = pcall(function() return HttpService:JSONDecode(response) end)
+    if not ok then return false, "NETWORK_ERROR" end
+    if data and data.valid then
+        return true, {
+            keyId      = data.keyId,
+            label      = data.label or "Key",
+            validUntil = data.validUntil,
+            expiresIn  = data.expiresIn,
+            hwid       = data.hwid,
+            hwidReset  = data.hwidReset or false,
+            uses       = data.uses or data.executionCount or nil,
+        }
+    end
+    return false, data and data.reason or "INVALID_KEY"
+end
+
+function MystrixHub.Functions.FormatTimeRemaining(seconds)
+    if seconds <= 0 then return "Expired" end
+    local d = math.floor(seconds / 86400)
+    local h = math.floor((seconds % 86400) / 3600)
+    local m = math.floor((seconds % 3600) / 60)
+    if d > 0 then return d .. "d " .. h .. "h remaining"
+    elseif h > 0 then return h .. "h " .. m .. "m remaining"
+    elseif m > 0 then return m .. "m remaining"
+    else return "Less than a minute" end
+end
+
+function MystrixHub.Functions.FormatExpiry(isoDate)
+    if not isoDate then return nil, nil end
+    local ok, dt = pcall(function() return DateTime.fromIsoDate(isoDate) end)
+    if not (ok and dt) then return nil, nil end
+    local t = os.date("*t", dt.UnixTimestamp)
+    return string.format("%02d/%02d/%d at %02d:%02d UTC", t.month, t.day, t.year, t.hour, t.min),
+           dt.UnixTimestamp - os.time()
+end
+
+function MystrixHub.Functions.GetFriendlyError(code)
+    return ({
+        INVALID_KEY     = "The key entered is invalid. Please double-check and try again.",
+        EXPIRED         = "This key has expired. Get a new one from the Discord server.",
+        REVOKED         = "This key has been revoked. Please contact support on Discord.",
+        NOT_FOUND       = "Key not found in the system. Did you enter it correctly?",
+        HWID_REQUIRED   = "HWID verification required. Please restart the game.",
+        HWID_MISMATCH   = "This key is registered to another device. Visit Discord to reset.",
+        NETWORK_ERROR   = "Network error. Check your connection and try again.",
+        TIMESTAMP_ERROR = "Time sync error. Check your device date and time settings.",
+        RATE_LIMITED    = "Too many attempts. Please wait a few minutes and try again.",
+    })[code] or ("Verification failed: " .. tostring(code))
+end
+
+function MystrixHub.Functions.GetExecData()
+    local data = { lastKeyId = "", count = 0 }
+    pcall(function()
+        if isfile and readfile and isfile(MystrixHub.Meta.ExecDataFile) then
+            local ok, parsed = pcall(function() return HttpService:JSONDecode(readfile(MystrixHub.Meta.ExecDataFile)) end)
+            if ok and parsed then data = parsed end
+        end
+    end)
+    return data
+end
+
+function MystrixHub.Functions.SaveExecData(data)
+    pcall(function() if writefile then writefile(MystrixHub.Meta.ExecDataFile, HttpService:JSONEncode(data)) end end)
+end
+
+function MystrixHub.Functions.IncrementExecCount(keyId)
+    local data = MystrixHub.Functions.GetExecData()
+    if data.lastKeyId == keyId then
+        data.count = (data.count or 0) + 1
+    else
+        data.count = 1
+        data.lastKeyId = keyId
+    end
+    MystrixHub.Functions.SaveExecData(data)
+    return data.count
+end
+
+function MystrixHub.Functions.FetchDiscordInfo()
+    local ok, resp = pcall(MystrixHub.Functions.MakeRawRequest,
+        "https://discord.com/api/v9/invites/" .. MystrixHub.Meta.Discord .. "?with_counts=true",
+        "GET", {["Accept"] = "application/json"}, nil)
+    if ok and resp and resp.Body then
+        local ok2, data = pcall(function() return HttpService:JSONDecode(resp.Body) end)
+        if ok2 and data then
+            if data.guild and data.guild.name then MystrixHub.Meta.ServerName = data.guild.name end
+            MystrixHub.Meta.MemberCount = data.approximate_member_count  and tostring(data.approximate_member_count)  or "N/A"
+            MystrixHub.Meta.OnlineCount = data.approximate_presence_count and tostring(data.approximate_presence_count) or "N/A"
+            return true
+        end
+    end
+    MystrixHub.Meta.MemberCount = "Unavailable"
+    MystrixHub.Meta.OnlineCount = "Unavailable"
+    return false
+end
+
+function MystrixHub.Functions.ApplyTransparency()
+    if MystrixHub.UIController.WinBG then
+        MystrixHub.UIController.WinBG.ImageTransparency = MystrixHub.UIController.BGTransparency
+    end
+end
+
+function MystrixHub.Functions.StartBGWatcher()
+    if MystrixHub.UIController.BGWatcher then
+        MystrixHub.UIController.BGWatcher:Disconnect()
+        MystrixHub.UIController.BGWatcher = nil
+    end
+    if not MystrixHub.UIController.WinBG then return end
+    MystrixHub.UIController.BGWatcher = MystrixHub.UIController.WinBG:GetPropertyChangedSignal("ImageTransparency"):Connect(function()
+        if MystrixHub.UIController.WinBG.ImageTransparency ~= 1 and MystrixHub.UIController.WinBG.ImageTransparency ~= MystrixHub.UIController.BGTransparency then
+            MystrixHub.UIController.WinBG.ImageTransparency = MystrixHub.UIController.BGTransparency
+        end
+    end)
+end
+
+function MystrixHub.Functions.DestroyFPSTag()
+    if MystrixHub.UIController.FPSTag then
+        pcall(function() MystrixHub.UIController.FPSTag:Destroy() end)
+        MystrixHub.UIController.FPSTag = nil
+    end
+    if MystrixHub.UIController.FPSConnection then
+        MystrixHub.UIController.FPSConnection:Disconnect()
+        MystrixHub.UIController.FPSConnection = nil
+    end
+end
+
+function MystrixHub.Functions.CreateFPSTag()
+    MystrixHub.Functions.DestroyFPSTag()
+    MystrixHub.UIController.FPSTag = MystrixHub.UIController.Window:Tag({ Title = "FPS: --", Color = MystrixHub.UIController.CurrentAccent })
+    local lastUpdate = tick()
+    local frameCount = 0
+    MystrixHub.UIController.FPSConnection = RunService.RenderStepped:Connect(function()
+        frameCount = frameCount + 1
+        local now = tick()
+        if now - lastUpdate >= 1 then
+            local fps = math.floor(frameCount / (now - lastUpdate))
+            MystrixHub.UIController.FPSTag:SetTitle("FPS: " .. fps)
+            frameCount = 0
+            lastUpdate = now
+        end
+    end)
+end
+
+function MystrixHub.Functions.DestroyPingTag()
+    if MystrixHub.UIController.PingTag then
+        pcall(function() MystrixHub.UIController.PingTag:Destroy() end)
+        MystrixHub.UIController.PingTag = nil
+    end
+    if MystrixHub.UIController.PingConnection then
+        MystrixHub.UIController.PingConnection:Disconnect()
+        MystrixHub.UIController.PingConnection = nil
+    end
+end
+
+function MystrixHub.Functions.CreatePingTag()
+    MystrixHub.Functions.DestroyPingTag()
+    MystrixHub.UIController.PingTag = MystrixHub.UIController.Window:Tag({ Title = "Ping: --", Color = MystrixHub.UIController.CurrentAccent })
+    MystrixHub.UIController.PingConnection = RunService.RenderStepped:Connect(function()
+        local ok, ping = pcall(function()
+            return math.floor(Stats.Network.ServerStatsItem["Data Ping"]:GetValue())
+        end)
+        if ok and ping then MystrixHub.UIController.PingTag:SetTitle("Ping: " .. ping .. "ms") end
+    end)
+end
+
+function MystrixHub.Functions.UpdateTagAccents(accent)
+    MystrixHub.UIController.CurrentAccent = accent
+    MystrixHub.UIController.VersionTag:SetColor(accent)
+    if MystrixHub.UIController.FPSTag  then MystrixHub.UIController.FPSTag:SetColor(accent)  end
+    if MystrixHub.UIController.PingTag then MystrixHub.UIController.PingTag:SetColor(accent) end
+end
+
+function MystrixHub.Functions.FireRemote(name, ...)
+    local args = {...}
+    pcall(function()
+        ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages"):WaitForChild("Network"):WaitForChild(name):FireServer(table.unpack(args))
+    end)
+end
+
+function MystrixHub.Functions.InvokeRemote(name, ...)
+    local args = {...}
+    pcall(function()
+        ReplicatedStorage:WaitForChild("Shared"):WaitForChild("Packages"):WaitForChild("Network"):WaitForChild(name):InvokeServer(table.unpack(args))
+    end)
+end
+
+function MystrixHub.Functions.GetPlayerPlot()
+    for _, plot in ipairs(workspace.Plots:GetChildren()) do
+        if plot:GetAttribute("Owner") == LocalPlayer.Name then return plot end
+    end
+    return nil
+end
+
+function MystrixHub.Functions.GetOccupiedSlotsSorted(plot)
+    local slots = {}
+    local slotsFolder = plot:FindFirstChild("Slots")
+    if not slotsFolder then return slots end
+    for _, slotPart in ipairs(slotsFolder:GetChildren()) do
+        if slotPart:IsA("BasePart") and slotPart:FindFirstChild("PlacedPart") then
+            local num = tonumber(slotPart.Name:match("%d+"))
+            if num then table.insert(slots, {part = slotPart, num = num}) end
+        end
+    end
+    table.sort(slots, function(a, b) return a.num < b.num end)
+    local sortedParts = {}
+    for _, entry in ipairs(slots) do table.insert(sortedParts, entry.part) end
+    return sortedParts
+end
+
+function MystrixHub.Functions.GetMatchingSlots(rarityName)
+    local plot = MystrixHub.Functions.GetPlayerPlot()
+    if not plot then return {} end
+    local ids = MystrixHub.RarityData[rarityName]
+    if not ids then return {} end
+    local idSet = {}
+    for _, id in ipairs(ids) do idSet[id] = true end
+    local matches = {}
+    for _, slot in ipairs(MystrixHub.Functions.GetOccupiedSlotsSorted(plot)) do
+        local placed = slot:FindFirstChild("PlacedPart")
+        if placed then
+            local name = placed:GetAttribute("ID")
+            if name and idSet[name] then table.insert(matches, slot) end
+        end
+    end
+    return matches
+end
+
+function MystrixHub.Functions.UpgradeSlotsSequentially(slots)
+    for _, slot in ipairs(slots) do
+        local num = tonumber(slot.Name:match("%d+"))
+        if num then
+            MystrixHub.Functions.FireRemote("rev_B_Upgrade", num)
+            task.wait(0.1)
+        end
+    end
+end
+
+function MystrixHub.Functions.GetRarityOfBrainrot(name)
+    local farmRarities = {"Common","Rare","Epic","Legendary","Mythic","Godly","Secret","OG","Hacked","Divine","Celestial"}
+    for _, rarity in ipairs(farmRarities) do
+        local names = MystrixHub.RarityData[rarity]
+        if names then
+            for _, n in ipairs(names) do
+                if n == name then return rarity end
+            end
+        end
+    end
+    return nil
+end
+
+function MystrixHub.FarmController.IsMutationOk(mutation)
+    for _, m in ipairs(MystrixHub.FarmController.SelectedMutations) do
+        if m == "Any" then return true end
+    end
+    local hasNone = false
+    for _, m in ipairs(MystrixHub.FarmController.SelectedMutations) do
+        if m == "None" then hasNone = true break end
+    end
+    if hasNone and (mutation == "" or mutation == "None") then return true end
+    for _, m in ipairs(MystrixHub.FarmController.SelectedMutations) do
+        if m == mutation then return true end
+    end
+    return false
+end
+
+function MystrixHub.FarmController.IsConditionMet(attr)
+    if not attr or attr == "" then return false end
+    local parts = {}
+    for part in attr:gmatch("[^,]+") do
+        table.insert(parts, part:match("^%s*(.-)%s*$"))
+    end
+    if #parts < 2 then return false end
+    local name     = parts[1]
+    local mutation = parts[2]
+    if #MystrixHub.FarmController.SelectedSpecific > 0 then
+        for _, sel in ipairs(MystrixHub.FarmController.SelectedSpecific) do
+            if sel == name then
+                return MystrixHub.FarmController.IsMutationOk(mutation)
+            end
+        end
+        return false
+    end
+    if #MystrixHub.FarmController.SelectedRarities == 0 then return false end
+    local rarity = MystrixHub.Functions.GetRarityOfBrainrot(name)
+    if not rarity then return false end
+    for _, r in ipairs(MystrixHub.FarmController.SelectedRarities) do
+        if r == rarity then
+            return MystrixHub.FarmController.IsMutationOk(mutation)
+        end
+    end
+    return false
+end
+
+function MystrixHub.FarmController.WaitForRunVisible()
+    local hud = LocalPlayer.PlayerGui:FindFirstChild("HUD") or LocalPlayer.PlayerGui:WaitForChild("HUD")
+    local runGui = hud:WaitForChild("Run")
+    repeat task.wait(0.1) until runGui.Visible
+end
+
+function MystrixHub.FarmController.DieToWave()
+    local char = LocalPlayer.Character
+    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+    local waveFolder = workspace:FindFirstChild("Waves")
+    if not waveFolder then return end
+    local waves = waveFolder:GetChildren()
+    if #waves == 0 then return end
+    local target = waves[1]:FindFirstChild("PrimaryPart") or waves[1]:FindFirstChild("RootPart")
+    if not target then return end
+    char.HumanoidRootPart.CFrame = target.CFrame * CFrame.new(0, 0, -10)
+end
+
+function MystrixHub.FarmController.FlyPath(root, speedMultiplier)
+    local path = {
+        Vector3.new(675, -7, 237),
+        Vector3.new(675, 3, 237),
+        Vector3.new(690, 3, 238)
+    }
+    local baseSpeed = 20
+    for _, target in ipairs(path) do
+        local startPos = root.Position
+        local distance = (target - startPos).Magnitude
+        local duration = distance / (baseSpeed * speedMultiplier)
+        if duration <= 0 then duration = 0.01 end
+        local tween = TweenService:Create(root, TweenInfo.new(duration, Enum.EasingStyle.Linear), {CFrame = CFrame.new(target)})
+        tween:Play()
+        tween.Completed:Wait()
+    end
+end
+
+function MystrixHub.FarmController.Start()
+    if MystrixHub.FarmController.Running then return end
+    MystrixHub.FarmController.Running = true
+    MystrixHub.FarmController.Loop = task.spawn(function()
+        while MystrixHub.FarmController.Running do
+            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+            if char:FindFirstChild("HumanoidRootPart") then
+                char.HumanoidRootPart.CFrame = CFrame.new(690, 3, 238)
+            end
+            task.wait(0.5)
+            MystrixHub.Functions.FireRemote("rev_KickEvent", 1)
+            task.wait(0.5)
+            local attr      = LocalPlayer:GetAttribute("InGame")
+            local satisfied = MystrixHub.FarmController.IsConditionMet(attr)
+            MystrixHub.FarmController.WaitForRunVisible()
+            task.wait(0.1)
+            if satisfied then
+                local root = char:FindFirstChild("HumanoidRootPart")
+                if root then
+                    MystrixHub.FarmController.FlyPath(root, MystrixHub.FarmController.TweenSpeedMultiplier)
+                end
+                task.wait(0.5)
+                repeat
+                    char = LocalPlayer.Character
+                    task.wait(0.1)
+                until char and char:FindFirstChildOfClass("Tool")
+            else
+                MystrixHub.FarmController.DieToWave()
+                LocalPlayer.CharacterAdded:Wait()
+            end
+        end
+    end)
+end
+
+function MystrixHub.FarmController.Stop()
+    MystrixHub.FarmController.Running = false
+    if MystrixHub.FarmController.Loop then
+        task.cancel(MystrixHub.FarmController.Loop)
+        MystrixHub.FarmController.Loop = nil
+    end
+end
+
+function MystrixHub.CoinsController.Start()
+    if MystrixHub.CoinsController.Running then return end
+    MystrixHub.CoinsController.Running = true
+    MystrixHub.CoinsController.Loop = task.spawn(function()
+        while MystrixHub.CoinsController.Running do
+            local plot = MystrixHub.Functions.GetPlayerPlot()
+            if plot then
+                for _, slot in ipairs(MystrixHub.Functions.GetOccupiedSlotsSorted(plot)) do
+                    local num = tonumber(slot.Name:match("%d+"))
+                    if num then MystrixHub.Functions.FireRemote("rev_B_Collect", num) end
+                end
+            end
+            task.wait(MystrixHub.CoinsController.Delay)
+        end
+    end)
+end
+
+function MystrixHub.CoinsController.Stop()
+    MystrixHub.CoinsController.Running = false
+    if MystrixHub.CoinsController.Loop then
+        task.cancel(MystrixHub.CoinsController.Loop)
+        MystrixHub.CoinsController.Loop = nil
+    end
+end
+
+function MystrixHub.UpgradeController.RefreshDropdown()
+    local values = {}
+    MystrixHub.UpgradeController.SlotDisplayMap = {}
+    local plot = MystrixHub.Functions.GetPlayerPlot()
+    if plot then
+        for _, slot in ipairs(MystrixHub.Functions.GetOccupiedSlotsSorted(plot)) do
+            local num    = tonumber(slot.Name:match("%d+"))
+            local placed = slot:FindFirstChild("PlacedPart")
+            local name   = placed and placed:GetAttribute("ID") or "???"
+            local display = "[" .. num .. "] " .. name
+            MystrixHub.UpgradeController.SlotDisplayMap[display] = num
+            table.insert(values, display)
+        end
+    end
+    if #values == 0 then values = {"No brainrots found"} end
+    if MystrixHub.UpgradeController.Dropdown then
+        MystrixHub.UpgradeController.Dropdown:Refresh(values)
+    end
+end
+
+function MystrixHub.Functions.SellBrainrotsByRarities(rarities)
+    local character = LocalPlayer.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not backpack then return end
+    pcall(function() humanoid:UnequipTools() end)
+    task.wait(0.1)
+    for _, rarity in ipairs(rarities) do
+        local names = MystrixHub.RarityData[rarity]
+        if names then
+            for _, name in ipairs(names) do
+                local tool = backpack:FindFirstChild(name)
+                while tool do
+                    pcall(function() humanoid:EquipTool(tool) end)
+                    task.wait(0.15)
+                    MystrixHub.Functions.InvokeRemote("ref_B_Sell")
+                    task.wait(0.15)
+                    tool = backpack:FindFirstChild(name)
+                end
+            end
+        end
+    end
+end
+
+function MystrixHub.Functions.SellSpecificBrainrots(brainrots)
+    local character = LocalPlayer.Character
+    if not character then return end
+    local humanoid = character:FindFirstChildOfClass("Humanoid")
+    if not humanoid then return end
+    local backpack = LocalPlayer:FindFirstChild("Backpack")
+    if not backpack then return end
+    pcall(function() humanoid:UnequipTools() end)
+    task.wait(0.1)
+    for _, fullName in ipairs(brainrots) do
+        local name = fullName:match("%] (.+)")
+        if name then
+            local tool = backpack:FindFirstChild(name)
+            while tool do
+                pcall(function() humanoid:EquipTool(tool) end)
+                task.wait(0.15)
+                MystrixHub.Functions.InvokeRemote("ref_B_Sell")
+                task.wait(0.15)
+                tool = backpack:FindFirstChild(name)
+            end
+        end
+    end
+end
+
+function MystrixHub.ConfigController.GetAllConfigNames()
+    local configs = {}
+    local ok, result = pcall(function() return MystrixHub.UIController.Window.ConfigManager:AllConfigs() end)
+    if ok and result then
+        for _, configName in ipairs(result) do table.insert(configs, configName) end
+    end
+    if #configs == 0 then table.insert(configs, "No configs found") end
+    return configs
+end
+
+function MystrixHub.ConfigController.SaveLastConfigName(name)
+    pcall(function() if writefile then writefile(MystrixHub.ConfigController.LastConfigFile, name) end end)
+end
+
+function MystrixHub.ConfigController.LoadLastConfigName()
+    local ok, result = pcall(function()
+        if readfile and isfile and isfile(MystrixHub.ConfigController.LastConfigFile) then
+            return readfile(MystrixHub.ConfigController.LastConfigFile)
+        end
+        return nil
+    end)
+    if ok and result and result ~= "" then return result end
+    return nil
+end
+
+function MystrixHub.ConfigController.GetAutoLoadSetting()
+    local ok, result = pcall(function()
+        if readfile and isfile and isfile(MystrixHub.ConfigController.AutoLoadFile) then
+            return readfile(MystrixHub.ConfigController.AutoLoadFile) == "true"
+        end
+        return false
+    end)
+    return ok and result or false
+end
+
+function MystrixHub.ConfigController.SetAutoLoadSetting(value)
+    pcall(function() if writefile then writefile(MystrixHub.ConfigController.AutoLoadFile, value and "true" or "false") end end)
+end
+
+function MystrixHub.ConfigController.GetConfig(configName)
+    if MystrixHub.ConfigController.Cache[configName] then return MystrixHub.ConfigController.Cache[configName] end
+    local config = MystrixHub.UIController.Window.ConfigManager:CreateConfig(configName)
+    MystrixHub.ConfigController.Cache[configName] = config
+    return config
+end
+
+function MystrixHub.Functions.AttemptAutoLoad()
+    if MystrixHub.ConfigController.GetAutoLoadSetting() then
+        local lastConfig = MystrixHub.ConfigController.LoadLastConfigName()
+        if lastConfig and lastConfig ~= "" then
+            task.spawn(function()
+                task.wait(0.5)
+                local configToLoad = MystrixHub.ConfigController.GetConfig(lastConfig)
+                local ok, err = pcall(function() configToLoad:Load() end)
+                if ok then
+                    WindUI:Notify({ Title = "Auto Load", Content = "Loaded last config: " .. lastConfig, Duration = 3, Icon = "check-circle" })
+                else
+                    WindUI:Notify({ Title = "Auto Load Failed", Content = tostring(err), Duration = 3, Icon = "alert-circle" })
+                end
+            end)
+        end
+    end
+end
+
+pcall(function()
+    local info = MarketplaceService:GetProductInfo(game.PlaceId)
+    MystrixHub.Meta.GameName = info.Name or "Unknown Game"
+end)
+
+MystrixHub.PlayerController.HWID = MystrixHub.Functions.GetHWID()
+MystrixHub.Functions.SyncServerTime()
+task.spawn(MystrixHub.Functions.FetchDiscordInfo)
+
+getgenv().WindUI = loadstring(game:HttpGet("https://raw.githubusercontent.com/Footagesus/WindUI/main/dist/main.lua"))()
+MystrixHub.UIController.WindUI = WindUI
+
+WindUI:AddTheme({
+    Name = "Monokai Pro", Accent = Color3.fromHex("#fc9867"), Outline = Color3.fromHex("#78dce8"),
+    Placeholder = Color3.fromHex("#6f6f6f"), Button = Color3.fromHex("#ab9df2"),
+    ElementBackground = Color3.fromHex("#323039"), Dialog = Color3.fromHex("#1e1e1e"),
+    Text = Color3.fromHex("#fcfcfa"), Background = Color3.fromHex("#191622"), Icon = Color3.fromHex("#a9dc76"),
+})
+
+WindUI:AddTheme({
+    Name = "Cotton Candy", Accent = Color3.fromHex("#ec4899"), Outline = Color3.fromHex("#f9a8d4"),
+    Placeholder = Color3.fromHex("#8a5fd3"), Button = Color3.fromHex("#d946ef"),
+    Icon = Color3.fromHex("#06b6d4"), Dialog = Color3.fromHex("#2d1b3d"),
+    Text = Color3.fromHex("#fdf2f8"), Background = Color3.fromHex("#1a0b2e"),
+    Slider = Color3.fromHex("#d946ef"), ElementBackground = Color3.fromHex("#312643"),
+})
+
+MystrixHub.UIController.Window = WindUI:CreateWindow({
+    Title                       = "Mystrix Hub - " .. MystrixHub.Meta.GameName,
+    Icon                        = "chess-queen",
+    Author                      = "Czm",
+    Folder                      = MystrixHub.Meta.FolderName,
+    Theme                       = "Dark",
+    Size                        = UDim2.fromOffset(850, 560),
+    MinSize                     = Vector2.new(560, 350),
+    MaxSize                     = Vector2.new(850, 560),
+    Transparent                 = true,
+    Resizable                   = true,
+    SideBarWidth                = 200,
+    BackgroundImageTransparency = 0.9,
+    HideSearchBar               = false,
+    ScrollBarEnabled            = true,
+    User                        = { Enabled = true, Anonymous = false },
+    KeySystem = MystrixHub.Auth.UseKeySystem and {
+        Title    = "Authentication Required",
+        Note     = "Enter Your Key to Continue!",
+        SaveKey  = true,
+        URL      = "https://mystrixhub.alexrule49.workers.dev/",
+        Thumbnail = { Image = MystrixHub.Meta.Logo, Width = 200 },
+        KeyValidator = function(key)
+            local success, result = MystrixHub.Functions.VerifyKey(key)
+            if success then
+                MystrixHub.Auth.KeyResult = result
+                MystrixHub.Auth.KeyError  = nil
+                return true
+            end
+            if type(result) == "table" and result.hwidReset then
+                MystrixHub.Auth.KeyResult = result
+                MystrixHub.Auth.KeyError  = "HWID_RESET"
+                return true
+            end
+            MystrixHub.Auth.KeyResult = nil
+            MystrixHub.Auth.KeyError  = result
+            return false
+        end,
+    } or nil,
+})
+
+MystrixHub.UIController.Window:EditOpenButton({
+    Title = "Mystrix Hub", CornerRadius = UDim.new(0, 16), StrokeThickness = 2,
+    Color = ColorSequence.new(Color3.fromHex("#00d4ff"), Color3.fromHex("#0091ff")),
+    OnlyMobile = false, Enabled = true, Draggable = true,
+})
+
+if MystrixHub.Auth.KeyResult and MystrixHub.Auth.KeyResult.keyId then
+    local count = MystrixHub.Functions.IncrementExecCount(MystrixHub.Auth.KeyResult.keyId)
+    MystrixHub.KeyDisplay.ExecCountStr = tostring(count)
+end
+
+task.spawn(function()
+    task.wait(0.5)
+    pcall(function()
+        for _, sg in ipairs(CoreGui:GetChildren()) do
+            local ok, bg = pcall(function() return sg.WindUI.Window.Frame.Background end)
+            if ok and bg then
+                MystrixHub.UIController.WinBG = bg
+                MystrixHub.Functions.ApplyTransparency()
+                MystrixHub.Functions.StartBGWatcher()
+                break
+            end
+        end
+    end)
+end)
+
+MystrixHub.UIController.VersionTag = MystrixHub.UIController.Window:Tag({
+    Title = MystrixHub.Meta.Version,
+    Color = MystrixHub.UIController.CurrentAccent,
+})
+
+if MystrixHub.Auth.KeyResult then
+    MystrixHub.KeyDisplay.KeyIdText    = MystrixHub.Auth.KeyResult.keyId or "N/A"
+    MystrixHub.KeyDisplay.KeyLabelText = MystrixHub.Auth.KeyResult.label or "Standard"
+    if MystrixHub.Auth.KeyResult.validUntil then
+        local dateStr, sLeft = MystrixHub.Functions.FormatExpiry(MystrixHub.Auth.KeyResult.validUntil)
+        MystrixHub.KeyDisplay.ExpiryText   = dateStr or "N/A"
+        MystrixHub.KeyDisplay.TimeLeftText = (sLeft and sLeft > 0) and MystrixHub.Functions.FormatTimeRemaining(sLeft) or "Expired"
+    elseif MystrixHub.Auth.KeyResult.expiresIn then
+        MystrixHub.KeyDisplay.ExpiryText   = "Server-provided"
+        MystrixHub.KeyDisplay.TimeLeftText = MystrixHub.Functions.FormatTimeRemaining(MystrixHub.Auth.KeyResult.expiresIn)
+    end
+    local kHwid = MystrixHub.Auth.KeyResult.hwid
+    if kHwid and kHwid ~= "" then
+        MystrixHub.KeyDisplay.HwidDisplay = kHwid:sub(1, 20) .. (#kHwid > 20 and "..." or "")
+    end
+    if MystrixHub.Auth.KeyResult.hwidReset then
+        MystrixHub.KeyDisplay.ResetText  = "Reset detected"
+        MystrixHub.KeyDisplay.StatusText = "Verified (HWID Reset)"
+    end
+else
+    MystrixHub.KeyDisplay.StatusText = "Issue detected"
+    local rawHwid = MystrixHub.PlayerController.HWID
+    if rawHwid then
+        MystrixHub.KeyDisplay.HwidDisplay = rawHwid:sub(1, 20) .. (#rawHwid > 20 and "..." or "")
+    end
+end
+
+MystrixHub.UIController.Tabs.Home     = MystrixHub.UIController.Window:Tab({ Title = "Home",      Icon = "house" })
+MystrixHub.UIController.Tabs.Brainrots = MystrixHub.UIController.Window:Tab({ Title = "Brainrots", Icon = "solar:virus-broken" })
+MystrixHub.UIController.Tabs.Upgrades  = MystrixHub.UIController.Window:Tab({ Title = "Upgrades",  Icon = "solar:graph-up-line-duotone" })
+MystrixHub.UIController.Tabs.Sell      = MystrixHub.UIController.Window:Tab({ Title = "Sell",      Icon = "solar:dollar-bold" })
+MystrixHub.UIController.Tabs.AutoFarm  = MystrixHub.UIController.Window:Tab({ Title = "Auto Farm", Icon = "solar:cloudy-moon-outline" })
+MystrixHub.UIController.Tabs.Settings  = MystrixHub.UIController.Window:Tab({ Title = "Settings",  Icon = "settings" })
+
+MystrixHub.UIController.Tabs.Home:Select()
+
+-- Brainrots Tab
+local CoinsSection = MystrixHub.UIController.Tabs.Brainrots:Section({ Title = "Coins", Icon = "coins", Box = true, Opened = true })
+
+CoinsSection:Toggle({
+    Title    = "Auto Collect Coins",
+    Value    = false,
+    Flag     = "AutoCollect_Coins",
+    Callback = function(state)
+        if state then MystrixHub.CoinsController.Start() else MystrixHub.CoinsController.Stop() end
+    end,
+})
+
+CoinsSection:Slider({
+    Title    = "Collect Delay",
+    Value    = { Min = 0.1, Max = 10, Default = 1 },
+    Step     = 0.1,
+    Flag     = "Collect_Delay",
+    Callback = function(value) MystrixHub.CoinsController.Delay = value end,
+})
+
+task.spawn(function()
+    while true do
+        task.wait(10)
+        if MystrixHub.CoinsController.Running then
+            MystrixHub.CoinsController.Stop()
+            MystrixHub.CoinsController.Start()
+        end
+    end
+end)
+
+local UpgradeSection = MystrixHub.UIController.Tabs.Brainrots:Section({ Title = "Upgrade", Icon = "arrow-up", Box = true, Opened = true })
+
+MystrixHub.UpgradeController.Dropdown = UpgradeSection:Dropdown({
+    Title     = "Select Brainrot",
+    Icon      = "list",
+    Values    = {"Loading..."},
+    Multi     = false,
+    AllowNone = true,
+    Flag      = "Upgrade_Selection",
+    Callback  = function() end,
+})
+
+local UpgBtnHStack = UpgradeSection:HStack()
+local UpgLeftV     = UpgBtnHStack:VStack()
+local UpgRightV    = UpgBtnHStack:VStack()
+
+UpgLeftV:Button({
+    Title    = "Upgrade",
+    Callback = function()
+        local selected = MystrixHub.UpgradeController.Dropdown.Value
+        if selected and selected ~= "No brainrots found" then
+            local slotNum = MystrixHub.UpgradeController.SlotDisplayMap[selected]
+            if slotNum then MystrixHub.Functions.FireRemote("rev_B_Upgrade", slotNum) end
+        end
+    end,
+})
+
+UpgRightV:Button({
+    Title    = "Refresh",
+    Callback = function() MystrixHub.UpgradeController.RefreshDropdown() end,
+})
+
+UpgradeSection:Toggle({
+    Title    = "Auto Upgrade",
+    Value    = false,
+    Flag     = "AutoUpgrade_Toggle",
+    Callback = function(state)
+        if state then
+            if MystrixHub.UpgradeController.AutoRunning then return end
+            MystrixHub.UpgradeController.AutoRunning = true
+            MystrixHub.UpgradeController.AutoLoop = task.spawn(function()
+                while MystrixHub.UpgradeController.AutoRunning do
+                    local selected = MystrixHub.UpgradeController.Dropdown.Value
+                    if selected and selected ~= "No brainrots found" then
+                        local slotNum = MystrixHub.UpgradeController.SlotDisplayMap[selected]
+                        if slotNum then MystrixHub.Functions.FireRemote("rev_B_Upgrade", slotNum) end
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        else
+            MystrixHub.UpgradeController.AutoRunning = false
+            if MystrixHub.UpgradeController.AutoLoop then
+                task.cancel(MystrixHub.UpgradeController.AutoLoop)
+                MystrixHub.UpgradeController.AutoLoop = nil
+            end
+        end
+    end,
+})
+
+MystrixHub.UpgradeController.RefreshDropdown()
+
+local RaritySection = MystrixHub.UIController.Tabs.Brainrots:Section({ Title = "Upgrade by Rarity", Icon = "sfsymbols:cameraFilters", Box = true, Opened = true })
+
+MystrixHub.UpgradeController.RarityDropdown = RaritySection:Dropdown({
+    Title     = "Select Rarity",
+    Values    = MystrixHub.RarityOrder,
+    Multi     = false,
+    Flag     = "UpgradeRarityDropdown",
+    AllowNone = true,
+    
+    Callback  = function() end,
+})
+
+local RarityHStack = RaritySection:HStack()
+local RarityLeftV  = RarityHStack:VStack()
+local RarityRightV = RarityHStack:VStack()
+
+RarityLeftV:Button({
+    Title    = "Upgrade",
+    Callback = function()
+        local rarity = MystrixHub.UpgradeController.RarityDropdown.Value
+        if rarity then
+            MystrixHub.Functions.UpgradeSlotsSequentially(MystrixHub.Functions.GetMatchingSlots(rarity))
+        end
+    end,
+})
+
+RarityRightV:Toggle({
+    Title    = "Auto Upgrade",
+    Value    = false,
+    Flag     = "autoupgrar",
+    Callback = function(state)
+        if state then
+            if MystrixHub.UpgradeController.AutoRarityRunning then return end
+            MystrixHub.UpgradeController.AutoRarityRunning = true
+            MystrixHub.UpgradeController.AutoRarityLoop = task.spawn(function()
+                while MystrixHub.UpgradeController.AutoRarityRunning do
+                    local rarity = MystrixHub.UpgradeController.RarityDropdown.Value
+                    if rarity then
+                        MystrixHub.Functions.UpgradeSlotsSequentially(MystrixHub.Functions.GetMatchingSlots(rarity))
+                    end
+                    task.wait(0.1)
+                end
+            end)
+        else
+            MystrixHub.UpgradeController.AutoRarityRunning = false
+            if MystrixHub.UpgradeController.AutoRarityLoop then
+                task.cancel(MystrixHub.UpgradeController.AutoRarityLoop)
+                MystrixHub.UpgradeController.AutoRarityLoop = nil
+            end
+        end
+    end,
+})
+
+-- Upgrades Tab
+local SlotsSection = MystrixHub.UIController.Tabs.Upgrades:Section({ Title = "Slots", Icon = "square-stack", Box = true, Opened = true })
+
+SlotsSection:Button({
+    Title    = "Upgrade Slot",
+    Callback = function() MystrixHub.Functions.FireRemote("rev_bs_upgrade") end,
+})
+
+SlotsSection:Toggle({
+    Title    = "Auto Upgrade",
+    Value    = false,
+    Flag     = "SlotUpgrade",
+    Callback = function(state)
+        if state then
+            if MystrixHub.SlotsController.AutoRunning then return end
+            MystrixHub.SlotsController.AutoRunning = true
+            MystrixHub.SlotsController.AutoLoop = task.spawn(function()
+                while MystrixHub.SlotsController.AutoRunning do
+                    MystrixHub.Functions.FireRemote("rev_bs_upgrade")
+                    task.wait(1)
+                end
+            end)
+        else
+            MystrixHub.SlotsController.AutoRunning = false
+            if MystrixHub.SlotsController.AutoLoop then
+                task.cancel(MystrixHub.SlotsController.AutoLoop)
+                MystrixHub.SlotsController.AutoLoop = nil
+            end
+        end
+    end,
+})
+
+local SpeedSection = MystrixHub.UIController.Tabs.Upgrades:Section({ Title = "Speed", Icon = "zap", Box = true, Opened = true })
+
+SpeedSection:Slider({
+    Title    = "+ Speed",
+    Value    = { Min = 1, Max = 10, Default = 1 },
+    Flag     = "buyspeedslider",
+    Step     = 1,
+    Callback = function(value) MystrixHub.SpeedController.Amount = value end,
+})
+
+local SpeedHStack = SpeedSection:HStack()
+local SpeedLeft   = SpeedHStack:VStack()
+local SpeedRight  = SpeedHStack:VStack()
+
+SpeedLeft:Button({
+    Title    = "Buy",
+    Callback = function() MystrixHub.Functions.FireRemote("rev_SPEED_UPGRADE", MystrixHub.SpeedController.Amount) end,
+})
+
+SpeedRight:Toggle({
+    Title    = "Auto Buy",
+    Value    = false,
+    Flag     = "autobuyspeed",
+    Callback = function(state)
+        if state then
+            if MystrixHub.SpeedController.AutoRunning then return end
+            MystrixHub.SpeedController.AutoRunning = true
+            MystrixHub.SpeedController.AutoLoop = task.spawn(function()
+                while MystrixHub.SpeedController.AutoRunning do
+                    MystrixHub.Functions.FireRemote("rev_SPEED_UPGRADE", MystrixHub.SpeedController.Amount)
+                    task.wait(1)
+                end
+            end)
+        else
+            MystrixHub.SpeedController.AutoRunning = false
+            if MystrixHub.SpeedController.AutoLoop then
+                task.cancel(MystrixHub.SpeedController.AutoLoop)
+                MystrixHub.SpeedController.AutoLoop = nil
+            end
+        end
+    end,
+})
+
+local WeightsSection = MystrixHub.UIController.Tabs.Upgrades:Section({ Title = "Weights", Icon = "dumbbell", Box = true, Opened = true })
+
+MystrixHub.WeightsController.Dropdown = WeightsSection:Dropdown({
+    Title     = "Select Weights",
+    Values    = MystrixHub.WeightNames,
+    Multi     = true,
+    Flag     = "sweightdropdown",
+    AllowNone = true,
+    Callback  = function() end,
+})
+
+local WeightHStack = WeightsSection:HStack()
+local WeightLeft   = WeightHStack:VStack()
+local WeightRight  = WeightHStack:VStack()
+
+WeightLeft:Button({
+    Title    = "Buy",
+    Callback = function()
+        local selected = MystrixHub.WeightsController.Dropdown.Value
+        if selected and type(selected) == "table" then
+            for _, name in ipairs(selected) do
+                MystrixHub.Functions.FireRemote("rev_Shop_Buy", "WeightShop", name)
+            end
+        end
+    end,
+})
+
+WeightRight:Toggle({
+    Title    = "Auto Buy",
+    Value    = false,
+    Flag     = "weightbuyauto",
+    Callback = function(state)
+        if state then
+            if MystrixHub.WeightsController.AutoRunning then return end
+            MystrixHub.WeightsController.AutoRunning = true
+            MystrixHub.WeightsController.AutoLoop = task.spawn(function()
+                while MystrixHub.WeightsController.AutoRunning do
+                    local selected = MystrixHub.WeightsController.Dropdown.Value
+                    if selected and type(selected) == "table" then
+                        for _, name in ipairs(selected) do
+                            MystrixHub.Functions.FireRemote("rev_Shop_Buy", "WeightShop", name)
+                        end
+                    end
+                    task.wait(1)
+                end
+            end)
+        else
+            MystrixHub.WeightsController.AutoRunning = false
+            if MystrixHub.WeightsController.AutoLoop then
+                task.cancel(MystrixHub.WeightsController.AutoLoop)
+                MystrixHub.WeightsController.AutoLoop = nil
+            end
+        end
+    end,
+})
+
+WeightsSection:Button({
+    Title    = "Buy Best",
+    Callback = function()
+        for _, name in ipairs(MystrixHub.WeightsBestOrder) do
+            MystrixHub.Functions.FireRemote("rev_Shop_Buy", "WeightShop", name)
+        end
+    end,
+})
+
+local RebirthsSection = MystrixHub.UIController.Tabs.Upgrades:Section({ Title = "Rebirths", Icon = "rotate-cw", Box = true, Opened = true })
+
+RebirthsSection:Button({
+    Title    = "Rebirth",
+    Callback = function() MystrixHub.Functions.FireRemote("rev_RebirthRequest") end,
+})
+
+RebirthsSection:Toggle({
+    Title    = "Auto Rebirth",
+    Value    = false,
+    Flag     = "autorebirths",
+    Callback = function(state)
+        if state then
+            if MystrixHub.RebirthController.AutoRunning then return end
+            MystrixHub.RebirthController.AutoRunning = true
+            MystrixHub.RebirthController.AutoLoop = task.spawn(function()
+                while MystrixHub.RebirthController.AutoRunning do
+                    MystrixHub.Functions.FireRemote("rev_RebirthRequest")
+                    task.wait(1)
+                end
+            end)
+        else
+            MystrixHub.RebirthController.AutoRunning = false
+            if MystrixHub.RebirthController.AutoLoop then
+                task.cancel(MystrixHub.RebirthController.AutoLoop)
+                MystrixHub.RebirthController.AutoLoop = nil
+            end
+        end
+    end,
+})
+
+-- Sell Tab
+local EquippedSection = MystrixHub.UIController.Tabs.Sell:Section({ Title = "Equipped", Icon = "hand-fist", Box = true, Opened = true })
+
+EquippedSection:Button({
+    Title    = "Sell Equipped Brainrot",
+    Callback = function() MystrixHub.Functions.InvokeRemote("ref_B_Sell") end,
+})
+
+local AllSection = MystrixHub.UIController.Tabs.Sell:Section({ Title = "All", Icon = "solar:list-cross-line-duotone", Box = true, Opened = true })
+
+AllSection:Button({
+    Title    = "Sell All Brainrots",
+    Callback = function()
+        local dialog = MystrixHub.UIController.Window:Dialog({
+            Icon       = "solar:info-circle-bold-duotone",
+            Title      = "Sell All Brainrots",
+            IconThemed = true,
+            Content    = "Are you sure you want to sell ALL brainrots? This cannot be undone.",
+            Buttons    = {
+                {
+                    Title    = "Sell All",
+                    Variant  = "Destructive",
+                    Callback = function()
+                        MystrixHub.Functions.InvokeRemote("ref_B_SellAll")
+                        dialog:Close()
+                    end,
+                },
+                {
+                    Title    = "Cancel",
+                    Variant  = "Secondary",
+                    Callback = function() dialog:Close() end,
+                },
+            },
+        })
+        dialog:Show()
+    end,
+})
+
+local RaritySellSection = MystrixHub.UIController.Tabs.Sell:Section({ Title = "Rarity", Icon = "solar:checklist-bold", Box = true, Opened = true })
+
+RaritySellSection:Dropdown({
+    Title     = "Select Rarities",
+    Values    = MystrixHub.RarityOrder,
+    Multi     = true,
+    Flag     = "rarityselldp",
+    AllowNone = true,
+    Callback  = function(selected) MystrixHub.SellController.SelectedRarities = selected or {} end,
+})
+
+local SellRarityHStack = RaritySellSection:HStack()
+local SellRarityLeftV  = SellRarityHStack:VStack()
+local SellRarityRightV = SellRarityHStack:VStack()
+
+SellRarityLeftV:Button({
+    Title    = "Sell",
+    Callback = function()
+        if #MystrixHub.SellController.SelectedRarities > 0 then
+            MystrixHub.Functions.SellBrainrotsByRarities(MystrixHub.SellController.SelectedRarities)
+        end
+    end,
+})
+
+SellRarityRightV:Toggle({
+    Title    = "Auto Sell",
+    Value    = false,
+    Flag     = "raritysellltg",
+    Callback = function(state)
+        if state then
+            if MystrixHub.SellController.AutoRunning then return end
+            MystrixHub.SellController.AutoRunning = true
+            MystrixHub.SellController.AutoLoop = task.spawn(function()
+                while MystrixHub.SellController.AutoRunning do
+                    if #MystrixHub.SellController.SelectedRarities > 0 then
+                        MystrixHub.Functions.SellBrainrotsByRarities(MystrixHub.SellController.SelectedRarities)
+                    end
+                    task.wait(MystrixHub.SellController.AutoDelay)
+                end
+            end)
+        else
+            MystrixHub.SellController.AutoRunning = false
+            if MystrixHub.SellController.AutoLoop then
+                task.cancel(MystrixHub.SellController.AutoLoop)
+                MystrixHub.SellController.AutoLoop = nil
+            end
+        end
+    end,
+})
+
+RaritySellSection:Slider({
+    Title    = "Auto Sell Delay",
+    Value    = { Min = 1, Max = 60, Default = 5 },
+    Step     = 1,
+    Flag     = "raritysellsl",
+    Callback = function(value) MystrixHub.SellController.AutoDelay = value end,
+})
+
+local SpecificSection = MystrixHub.UIController.Tabs.Sell:Section({ Title = "Specific", Icon = "search", Box = true, Opened = true })
+
+local allBrainrotsSorted = {}
+for _, rarity in ipairs(MystrixHub.RarityOrder) do
+    local names = MystrixHub.RarityData[rarity]
+    if names then
+        for _, name in ipairs(names) do
+            table.insert(allBrainrotsSorted, "[" .. rarity .. "] " .. name)
+        end
+    end
+end
+
+SpecificSection:Dropdown({
+    Title     = "Select Brainrots",
+    Values    = allBrainrotsSorted,
+    Multi     = true,
+    AllowNone = true,
+    Flag     = "specificselldp",
+    Callback  = function(selected) MystrixHub.SellController.SpecificSelected = selected or {} end,
+})
+
+local SpecificHStack = SpecificSection:HStack()
+local SpecificLeftV  = SpecificHStack:VStack()
+local SpecificRightV = SpecificHStack:VStack()
+
+SpecificLeftV:Button({
+    Title    = "Sell",
+    Callback = function()
+        if #MystrixHub.SellController.SpecificSelected > 0 then
+            MystrixHub.Functions.SellSpecificBrainrots(MystrixHub.SellController.SpecificSelected)
+        end
+    end,
+})
+
+SpecificRightV:Toggle({
+    Title    = "Auto Sell",
+    Value    = false,
+    Flag     = "specificselltg",
+    Callback = function(state)
+        if state then
+            if MystrixHub.SellController.SpecificAutoRunning then return end
+            MystrixHub.SellController.SpecificAutoRunning = true
+            MystrixHub.SellController.SpecificAutoLoop = task.spawn(function()
+                while MystrixHub.SellController.SpecificAutoRunning do
+                    if #MystrixHub.SellController.SpecificSelected > 0 then
+                        MystrixHub.Functions.SellSpecificBrainrots(MystrixHub.SellController.SpecificSelected)
+                    end
+                    task.wait(MystrixHub.SellController.SpecificDelay)
+                end
+            end)
+        else
+            MystrixHub.SellController.SpecificAutoRunning = false
+            if MystrixHub.SellController.SpecificAutoLoop then
+                task.cancel(MystrixHub.SellController.SpecificAutoLoop)
+                MystrixHub.SellController.SpecificAutoLoop = nil
+            end
+        end
+    end,
+})
+
+SpecificSection:Slider({
+    Title    = "Auto Sell Delay",
+    Value    = { Min = 1, Max = 60, Default = 5 },
+    Flag     = "specificsellsl",
+    Step     = 1,
+    Callback = function(value) MystrixHub.SellController.SpecificDelay = value end,
+})
+
+-- Auto Farm Tab
+local KickSection = MystrixHub.UIController.Tabs.AutoFarm:Section({ Title = "Kick Power", Icon = "sfsymbols:figureKickboxing", Box = true, Opened = true })
+
+KickSection:Toggle({
+    Title    = "Auto Bonus",
+    Value    = false,
+    Flag     = "bonusauto",
+    Callback = function(state)
+        if state then
+            if MystrixHub.LiftController.AutoRunning then return end
+            MystrixHub.LiftController.AutoRunning = true
+            MystrixHub.LiftController.AutoLoop = task.spawn(function()
+                local kickGui = LocalPlayer.PlayerGui:WaitForChild("KickUpgrades", 10)
+                if not kickGui then return end
+                local bonusTemplate = kickGui:FindFirstChild("Bonus")
+                while MystrixHub.LiftController.AutoRunning do
+                    pcall(function()
+                        for _, child in ipairs(kickGui:GetChildren()) do
+                            if child ~= bonusTemplate and child:IsA("ImageButton") and child.Visible then
+                                MystrixHub.Functions.FireRemote("rev_TaviMishkal")
+                                child:Destroy()
+                                task.wait(0.05)
+                            end
+                        end
+                    end)
+                    task.wait(0.2)
+                end
+            end)
+        else
+            MystrixHub.LiftController.AutoRunning = false
+            if MystrixHub.LiftController.AutoLoop then
+                task.cancel(MystrixHub.LiftController.AutoLoop)
+                MystrixHub.LiftController.AutoLoop = nil
+            end
+        end
+    end,
+})
+
+local BrainrotSection = MystrixHub.UIController.Tabs.AutoFarm:Section({ Title = "Brainrot", Icon = "sfsymbols:teddybear", Box = true, Opened = true })
+
+local farmRarityOrder    = {"Common","Rare","Epic","Legendary","Mythic","Godly","Secret","OG","Hacked","Divine","Celestial"}
+local specificFarmValues = {}
+for _, rarity in ipairs(farmRarityOrder) do
+    local names = MystrixHub.RarityData[rarity]
+    if names then
+        for _, name in ipairs(names) do
+            table.insert(specificFarmValues, name)
+        end
+    end
+end
+
+BrainrotSection:Dropdown({
+    Title     = "Rarity",
+    Values    = farmRarityOrder,
+    Multi     = true,
+    AllowNone = true,
+    Flag     = "afraritydp",
+    Value     = {},
+    Callback  = function(sel) MystrixHub.FarmController.SelectedRarities = sel or {} end,
+})
+
+local MutSpecificHStack = BrainrotSection:HStack()
+local MutVStack         = MutSpecificHStack:VStack()
+local SpecVStack        = MutSpecificHStack:VStack()
+
+MutVStack:Dropdown({
+    Title     = "Mutations",
+    Values    = {"Any","None","Golden","Diamond","Plasma","Radioactive","Molten","Void","Shadow","Electrified","Rainbow"},
+    Multi     = true,
+    AllowNone = true,
+    Flag     = "afmutationdp",
+    Value     = {"Any"},
+    Callback  = function(sel) MystrixHub.FarmController.SelectedMutations = sel or {} end,
+})
+
+SpecVStack:Dropdown({
+    Title     = "Brainrots",
+    Values    = specificFarmValues,
+    Multi     = true,
+    AllowNone = true,
+    Flag     = "afbrainrotdp",
+    Value     = {},
+    Callback  = function(sel) MystrixHub.FarmController.SelectedSpecific = sel or {} end,
+})
+
+BrainrotSection:Slider({
+    Title    = "Speed",
+    Value    = { Min = 1, Max = 100, Default = 20 },
+    Flag     = "afsl",
+    Step     = 1,
+    Callback = function(value) MystrixHub.FarmController.TweenSpeedMultiplier = value end,
+})
+
+BrainrotSection:Toggle({
+    Title    = "Auto Farm Brainrots",
+    Value    = false,
+    Flag     = "aftg",
+    Callback = function(state)
+        if state then MystrixHub.FarmController.Start() else MystrixHub.FarmController.Stop() end
+    end,
+})
+
+-- Home Tab
+if MystrixHub.Meta.MemberCount == "Fetching..." then task.wait(1.5) end
+
+MystrixHub.UIController.Tabs.Home:Section({ Title = "Discord", Icon = "geist:logo-discord", Box = true, Opened = true }):Paragraph({
+    Title     = MystrixHub.Meta.ServerName,
+    Image     = MystrixHub.Meta.Logo,
+    ImageSize = 75,
+    Desc      = "Members: " .. MystrixHub.Meta.MemberCount .. "\nOnline: " .. MystrixHub.Meta.OnlineCount,
+    Locked    = false,
+    Buttons   = {
+        { Title = "Copy Invite", Icon = "link", Callback = function()
+            if setclipboard then setclipboard("https://discord.gg/" .. MystrixHub.Meta.Discord) end
+            WindUI:Notify({ Title = "Copied", Content = "Invite link copied to clipboard.", Duration = 3, Icon = "clipboard-check" })
+        end },
+    }
+})
+
+local KeyInfoParagraph = MystrixHub.UIController.Tabs.Home:Section({ Title = "Key Info", Icon = "sfsymbols:key2OnRing", Box = true, Opened = true }):Paragraph({
+    Title   = "Authentication",
+    Desc    = "Key ID: " .. MystrixHub.KeyDisplay.KeyIdText .. "\nTime Left: " .. MystrixHub.KeyDisplay.TimeLeftText .. "\nExecutions: " .. MystrixHub.KeyDisplay.ExecCountStr,
+    Locked  = false,
+    Buttons = {}
+})
+
+task.spawn(function()
+    while true do
+        task.wait(60)
+        if MystrixHub.Auth.KeyResult and MystrixHub.Auth.KeyResult.validUntil then
+            local ok, dt = pcall(function() return DateTime.fromIsoDate(MystrixHub.Auth.KeyResult.validUntil) end)
+            if ok and dt then
+                local sLeft = dt.UnixTimestamp - os.time()
+                MystrixHub.KeyDisplay.TimeLeftText = (sLeft > 0) and MystrixHub.Functions.FormatTimeRemaining(sLeft) or "Expired"
+            else
+                MystrixHub.KeyDisplay.TimeLeftText = "Expired"
+            end
+            local newDesc = "Key ID: " .. MystrixHub.KeyDisplay.KeyIdText .. "\nTime Left: " .. MystrixHub.KeyDisplay.TimeLeftText .. "\nExecutions: " .. MystrixHub.KeyDisplay.ExecCountStr
+            pcall(function() KeyInfoParagraph:SetDesc(newDesc) end)
+        end
+    end
+end)
+
+MystrixHub.UIController.Tabs.Home:Section({ Title = "Update", Icon = "solar:moon-fog-outline", Box = true, Opened = true }):Paragraph({
+    Title   = "UPDATED — " .. MystrixHub.Meta.Version,
+    Desc    = " Beta Release! ",
+    Locked  = false,
+    Buttons = {}
+})
+
+-- Settings Tab
+local SettingsHStack = MystrixHub.UIController.Tabs.Settings:HStack()
+local LeftVStack     = SettingsHStack:VStack()
+local RightVStack    = SettingsHStack:VStack()
+
+local AppearanceSection = LeftVStack:Section({ Title = "Appearance", Icon = "palette", Box = true, Opened = true })
+
+AppearanceSection:Dropdown({
+    Title    = "Theme",
+    Icon     = "swatchbook",
+    Values   = {"Sky","Dark","Light","Rose","Plant","Red","Indigo","Violet","Amber","Emerald","Midnight","Crimson","Mellowsi","Monokai Pro","Cotton Candy","Rainbow"},
+    Value    = "Dark",
+    Flag     = "UI_Theme",
+    Callback = function(theme)
+        WindUI:SetTheme(theme)
+        MystrixHub.UIController.CurrentTheme = theme
+        local accent = MystrixHub.UIController.ThemeAccents[theme] or Color3.fromHex("#FFFFFF")
+        MystrixHub.Functions.UpdateTagAccents(accent)
+        if not MystrixHub.UIController.ThemeFirstLoad then
+            WindUI:Notify({ Title = "Theme Changed", Content = theme, Duration = 2, Icon = "palette" })
+        end
+        MystrixHub.UIController.ThemeFirstLoad = false
+    end,
+})
+
+AppearanceSection:Slider({
+    Title    = "Transparency",
+    Value    = { Min = 0, Max = 0.99, Default = 0.15 },
+    Step     = 0.01,
+    Flag     = "Background_Transparency",
+    Callback = function(value)
+        MystrixHub.UIController.BGTransparency = value
+        if MystrixHub.UIController.WinBG then
+            MystrixHub.Functions.ApplyTransparency()
+        else
+            pcall(function()
+                for _, sg in ipairs(CoreGui:GetChildren()) do
+                    local ok, bg = pcall(function() return sg.WindUI.Window.Frame.Background end)
+                    if ok and bg then
+                        MystrixHub.UIController.WinBG = bg
+                        MystrixHub.Functions.ApplyTransparency()
+                        MystrixHub.Functions.StartBGWatcher()
+                        break
+                    end
+                end
+            end)
+        end
+    end,
+})
+
+AppearanceSection:Toggle({
+    Title    = "Show User",
+    Value    = true,
+    Flag     = "Show_User",
+    Callback = function(state)
+        if state then MystrixHub.UIController.Window.User:Enable() else MystrixHub.UIController.Window.User:Disable() end
+    end,
+})
+
+AppearanceSection:Toggle({
+    Title    = "Show FPS",
+    Value    = false,
+    Flag     = "Show_FPS",
+    Callback = function(state)
+        if state then MystrixHub.Functions.CreateFPSTag() else MystrixHub.Functions.DestroyFPSTag() end
+    end,
+})
+
+AppearanceSection:Toggle({
+    Title    = "Show Ping",
+    Value    = false,
+    Flag     = "Show_Ping",
+    Callback = function(state)
+        if state then MystrixHub.Functions.CreatePingTag() else MystrixHub.Functions.DestroyPingTag() end
+    end,
+})
+
+LeftVStack:Section({ Title = "Keybinds", Icon = "keyboard", Box = true, Opened = true }):Keybind({
+    Title    = "Toggle UI",
+    Icon     = "keyboard",
+    Value    = "J",
+    Flag     = "ToggleUI_Key",
+    Callback = function(v) MystrixHub.UIController.Window:SetToggleKey(Enum.KeyCode[v]) end,
+})
+
+local ConfigSection = RightVStack:Section({ Title = "Config", Icon = "save", Box = true, Opened = true })
+
+ConfigSection:Input({
+    Title       = "Config Name",
+    Icon        = "pencil",
+    Placeholder = "MystrixHub",
+    Callback    = function(value)
+        MystrixHub.ConfigController.NameInput = (value and value ~= "") and value or "MystrixHub"
+    end
+})
+
+ConfigSection:Button({
+    Title    = "Save Config",
+    Icon     = "save",
+    Callback = function()
+        task.spawn(function()
+            local configToSave = MystrixHub.ConfigController.GetConfig(MystrixHub.ConfigController.NameInput)
+            local ok, err = pcall(function() configToSave:Save() end)
+            if ok then MystrixHub.ConfigController.SaveLastConfigName(MystrixHub.ConfigController.NameInput) end
+            WindUI:Notify({
+                Title    = ok and "Config Saved" or "Save Failed",
+                Content  = ok and ("Saved as: " .. MystrixHub.ConfigController.NameInput) or tostring(err),
+                Duration = 3,
+                Icon     = ok and "check-circle" or "alert-circle",
+            })
+            if ok and MystrixHub.ConfigController.Dropdown then
+                MystrixHub.ConfigController.Dropdown:Refresh(MystrixHub.ConfigController.GetAllConfigNames())
+            end
+        end)
+    end
+})
+
+ConfigSection:Divider()
+
+local initialConfigs = MystrixHub.ConfigController.GetAllConfigNames()
+
+MystrixHub.ConfigController.Dropdown = ConfigSection:Dropdown({
+    Title    = "Select Config",
+    Icon     = "folder-open",
+    Values   = initialConfigs,
+    Multi    = false,
+    Value    = initialConfigs[1] or "No configs found",
+    Callback = function(value)
+        MystrixHub.ConfigController.SelectedConfig = (value ~= "No configs found") and value or nil
+    end
+})
+
+ConfigSection:Button({
+    Title    = "Refresh Config List",
+    Icon     = "refresh-cw",
+    Callback = function()
+        MystrixHub.ConfigController.Dropdown:Refresh(MystrixHub.ConfigController.GetAllConfigNames())
+        WindUI:Notify({ Title = "Refreshed", Content = "Config list has been updated!", Duration = 2, Icon = "check-circle" })
+    end
+})
+
+ConfigSection:Button({
+    Title    = "Load Selected Config",
+    Icon     = "folder-open",
+    Callback = function()
+        if not MystrixHub.ConfigController.SelectedConfig then
+            WindUI:Notify({ Title = "No Config Selected", Content = "Please select a config from the dropdown first!", Duration = 3, Icon = "alert-circle" })
+            return
+        end
+        WindUI:Notify({ Title = "Loading Config", Content = "Loading: " .. MystrixHub.ConfigController.SelectedConfig .. ", please wait...", Duration = 3, Icon = "loader-2" })
+        task.spawn(function()
+            local configToLoad = MystrixHub.ConfigController.GetConfig(MystrixHub.ConfigController.SelectedConfig)
+            local ok, err = pcall(function() configToLoad:Load() end)
+            if ok then MystrixHub.ConfigController.SaveLastConfigName(MystrixHub.ConfigController.SelectedConfig) end
+            WindUI:Notify({
+                Title    = ok and "Config Loaded" or "Load Failed",
+                Content  = ok and ("Loaded: " .. MystrixHub.ConfigController.SelectedConfig) or tostring(err),
+                Duration = 3,
+                Icon     = ok and "check-circle" or "alert-circle",
+            })
+        end)
+    end
+})
+
+ConfigSection:Button({
+    Title    = "Delete Selected Config",
+    Icon     = "trash-2",
+    Callback = function()
+        if not MystrixHub.ConfigController.SelectedConfig then
+            WindUI:Notify({ Title = "No Config Selected", Content = "Please select a config from the dropdown first!", Duration = 3, Icon = "alert-circle" })
+            return
+        end
+        task.spawn(function()
+            local configToDelete = MystrixHub.ConfigController.GetConfig(MystrixHub.ConfigController.SelectedConfig)
+            local ok, err = pcall(function() configToDelete:Delete() end)
+            WindUI:Notify({
+                Title    = ok and "Config Deleted" or "Delete Failed",
+                Content  = ok and ("Deleted: " .. MystrixHub.ConfigController.SelectedConfig) or tostring(err),
+                Duration = 3,
+                Icon     = ok and "check-circle" or "alert-circle",
+            })
+            if ok then
+                MystrixHub.ConfigController.Cache[MystrixHub.ConfigController.SelectedConfig] = nil
+                local lastConfig = MystrixHub.ConfigController.LoadLastConfigName()
+                if lastConfig == MystrixHub.ConfigController.SelectedConfig then
+                    pcall(function() if writefile then writefile(MystrixHub.ConfigController.LastConfigFile, "") end end)
+                end
+                MystrixHub.ConfigController.SelectedConfig = nil
+                MystrixHub.ConfigController.Dropdown:Refresh(MystrixHub.ConfigController.GetAllConfigNames())
+            end
+        end)
+    end
+})
+
+ConfigSection:Divider()
+
+ConfigSection:Toggle({
+    Title    = "Enable Auto Load",
+    Value    = MystrixHub.ConfigController.GetAutoLoadSetting(),
+    Flag     = "AutoLoad_Config",
+    Callback = function(value)
+        MystrixHub.ConfigController.SetAutoLoadSetting(value)
+        WindUI:Notify({
+            Title    = "Auto Load " .. (value and "Enabled" or "Disabled"),
+            Content  = value and "Last config will load on execute." or "Auto load turned off",
+            Duration = 2,
+            Icon     = value and "check-circle" or "info",
+        })
+    end
+})
+
+ConfigSection:Button({
+    Title    = "Load Last Config",
+    Icon     = "folder-open",
+    Callback = function()
+        local lastConfig = MystrixHub.ConfigController.LoadLastConfigName()
+        if not lastConfig or lastConfig == "" then
+            WindUI:Notify({ Title = "No Last Config", Content = "You haven't saved any config yet.", Duration = 3, Icon = "alert-circle" })
+            return
+        end
+        WindUI:Notify({ Title = "Loading Last Config", Content = "Loading: " .. lastConfig .. "...", Duration = 2, Icon = "loader-2" })
+        task.spawn(function()
+            local configToLoad = MystrixHub.ConfigController.GetConfig(lastConfig)
+            local ok, err = pcall(function() configToLoad:Load() end)
+            if ok then MystrixHub.ConfigController.SaveLastConfigName(lastConfig) end
+            WindUI:Notify({
+                Title    = ok and "Config Loaded" or "Load Failed",
+                Content  = ok and ("Loaded: " .. lastConfig) or tostring(err),
+                Duration = 3,
+                Icon     = ok and "check-circle" or "alert-circle",
+            })
+        end)
+    end
+})
+
+if MystrixHub.Auth.KeyError == "HWID_RESET" then
+    WindUI:Notify({ Title = "HWID Reset Detected", Content = "Your key has been re-linked to this device.", Duration = 6, Icon = "shield-alert" })
+elseif MystrixHub.Auth.KeyError then
+    WindUI:Notify({ Title = "Key Warning", Content = MystrixHub.Functions.GetFriendlyError(MystrixHub.Auth.KeyError), Duration = 6, Icon = "triangle-alert" })
+end
+
+local ok, err = pcall(function()
+end)
+
+if not ok then
+    warn("[MYSTRIX] Script error:", err)
+    WindUI:Notify({ Title = "Script Error", Content = "An error occurred. Report it in the Discord.", Duration = 8, Icon = "circle-x" })
+end
+
+MystrixHub.Functions.AttemptAutoLoad()
