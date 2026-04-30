@@ -31,7 +31,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v1.1"
+local CURRENT_VERSION  = "v1.2"
 local DISCORD_INVITE   = "XV66VWqAaN"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "MystrixHubKAL"
@@ -789,12 +789,16 @@ end
 MystrixHub.FarmController.Start = function()
     if MystrixHub.FarmController.Running then return end
     MystrixHub.FarmController.Running = true
+    MystrixHub.FarmController.IsCollecting = false
+
     MystrixHub.FarmController.Loop = task.spawn(function()
         while MystrixHub.FarmController.Running do
             local success, err = pcall(function()
+                MystrixHub.FarmController.IsCollecting = false
+
                 local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                 local root = char:WaitForChild("HumanoidRootPart", 10)
-                if not root then return end  
+                if not root then return end
 
                 root.CFrame = CFrame.new(690, 3, 238)
                 task.wait(0.5)
@@ -812,21 +816,48 @@ MystrixHub.FarmController.Start = function()
                     repeat
                         task.wait(0.1)
                         waited = waited + 0.1
-                        if waited > 10 then break end  
+                        if waited > 10 then break end
                     until runGui.Visible
-                    if not runGui.Visible then return end 
+                    if not runGui.Visible then return end
                 end
 
                 if satisfied then
+                    MystrixHub.FarmController.IsCollecting = true
+
+                    local function getTools()
+                        local t = {}
+                        if char then
+                            for _, obj in ipairs(char:GetChildren()) do
+                                if obj:IsA("Tool") then t[obj] = true end
+                            end
+                        end
+                        local back = LocalPlayer.Backpack
+                        if back then
+                            for _, obj in ipairs(back:GetChildren()) do
+                                if obj:IsA("Tool") then t[obj] = true end
+                            end
+                        end
+                        return t
+                    end
+
+                    local oldTools = getTools()
+
                     if root and root.Parent then
                         MystrixHub.FarmController.FlyPath(root, MystrixHub.FarmController.TweenSpeedMultiplier)
                     end
+
                     repeat
-                        MystrixHub.Functions.FireRemote("rev_KickCollect")
                         task.wait(0.5)
                         char = LocalPlayer.Character
-                    until (char and char:FindFirstChildOfClass("Tool"))
-
+                        local currentTools = getTools()
+                        local newTool = nil
+                        for tool in pairs(currentTools) do
+                            if not oldTools[tool] then
+                                newTool = tool
+                                break
+                            end
+                        end
+                    until newTool
                 else
                     task.wait(0.5)
                     local hum = char:FindFirstChildOfClass("Humanoid")
@@ -844,6 +875,13 @@ MystrixHub.FarmController.Start = function()
                 warn("[Auto Farm Error]", err)
             end
             task.wait(1)
+        end
+    end)
+
+    task.spawn(function()
+        while MystrixHub.FarmController.Running do
+            MystrixHub.Functions.FireRemote("rev_KickZman")
+            task.wait(0.1)
         end
     end)
 end
@@ -1721,7 +1759,7 @@ local LandingRightVStack = SpeedLandingHStack:VStack()
 
 SpeedLeftVStack:Slider({
     Title    = "Flight Speed",
-    Value    = { Min = 1, Max = 100, Default = 20 },
+    Value    = { Min = 1, Max = 500, Default = 100 },
     Flag     = "afsl",
     Step     = 1,
     Callback = function(value) MystrixHub.FarmController.TweenSpeedMultiplier = value end,
@@ -1793,7 +1831,7 @@ end)
 
 MystrixHub.UIController.Tabs.Home:Section({ Title = "Update", Icon = "solar:moon-fog-outline", Box = true, Opened = true }):Paragraph({
     Title   = "UPDATED — " .. MystrixHub.Meta.Version,
-    Desc    = "• Auto 2X\n• Landing (Instant/Normal)\n• Anti AFK\n• Bug Fixes",
+    Desc    = "• WONT DIE AT ANY SPEEDS!",
     Locked  = false,
     Buttons = {}
 })
