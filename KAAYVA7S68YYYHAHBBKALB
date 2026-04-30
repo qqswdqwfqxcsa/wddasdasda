@@ -31,7 +31,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v1.0"
+local CURRENT_VERSION  = "v1.1"
 local DISCORD_INVITE   = "XV66VWqAaN"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "MystrixHubKAL"
@@ -547,7 +547,14 @@ function MystrixHub.Functions.FetchDiscordInfo()
     MystrixHub.Meta.OnlineCount = "Unavailable"
     return false
 end
+local KickServiceClient = require(game:GetService("ReplicatedStorage").Modules.ServicesLoader.KickServiceClient)
+MystrixHub.FarmController.DefaultLandingSpeed = KickServiceClient.Multipliers.Speed or 1
+KickServiceClient.Multipliers.Speed = 1e6
 
+local WaveData = require(game:GetService("ReplicatedStorage").Shared.Data.WaveData)
+for _, wave in pairs(WaveData.Waves) do
+    wave.Speed = 0
+end
 function MystrixHub.Functions.ApplyTransparency()
     if MystrixHub.UIController.WinBG then
         MystrixHub.UIController.WinBG.ImageTransparency = MystrixHub.UIController.BGTransparency
@@ -751,23 +758,22 @@ function MystrixHub.FarmController.WaitForRunVisible()
     repeat task.wait(0.1) until runGui.Visible
 end
 
-function MystrixHub.FarmController.DieToWave()
+MystrixHub.FarmController.DieToWave = function()
+    task.wait(0.5)   
     local char = LocalPlayer.Character
-    if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-    local waveFolder = workspace:FindFirstChild("Waves")
-    if not waveFolder then return end
-    local waves = waveFolder:GetChildren()
-    if #waves == 0 then return end
-    local target = waves[1]:FindFirstChild("PrimaryPart") or waves[1]:FindFirstChild("RootPart")
-    if not target then return end
-    char.HumanoidRootPart.CFrame = target.CFrame * CFrame.new(0, 0, -10)
+    if char then
+        local humanoid = char:FindFirstChildOfClass("Humanoid")
+        if humanoid and humanoid.Health > 0 then
+            humanoid.Health = 0   
+        end
+    end
 end
 
 function MystrixHub.FarmController.FlyPath(root, speedMultiplier)
     local path = {
         Vector3.new(675, -7, 237),
         Vector3.new(675, 3, 237),
-        Vector3.new(690, 3, 238)
+        Vector3.new(703, 3, 239)
     }
     local baseSpeed = 20
     for _, target in ipairs(path) do
@@ -781,7 +787,7 @@ function MystrixHub.FarmController.FlyPath(root, speedMultiplier)
     end
 end
 
-function MystrixHub.FarmController.Start()
+MystrixHub.FarmController.Start = function()
     if MystrixHub.FarmController.Running then return end
     MystrixHub.FarmController.Running = true
     MystrixHub.FarmController.Loop = task.spawn(function()
@@ -791,23 +797,29 @@ function MystrixHub.FarmController.Start()
                 char.HumanoidRootPart.CFrame = CFrame.new(690, 3, 238)
             end
             task.wait(0.5)
+
+           
             MystrixHub.Functions.FireRemote("rev_KickEvent", 1)
             task.wait(0.5)
+
             local attr      = LocalPlayer:GetAttribute("InGame")
             local satisfied = MystrixHub.FarmController.IsConditionMet(attr)
+
             MystrixHub.FarmController.WaitForRunVisible()
-            task.wait(0.1)
+
             if satisfied then
                 local root = char:FindFirstChild("HumanoidRootPart")
                 if root then
                     MystrixHub.FarmController.FlyPath(root, MystrixHub.FarmController.TweenSpeedMultiplier)
                 end
-                task.wait(0.5)
+
                 repeat
+                    MystrixHub.Functions.FireRemote("rev_KickCollect")
+                    task.wait(0.5)
                     char = LocalPlayer.Character
-                    task.wait(0.1)
                 until char and char:FindFirstChildOfClass("Tool")
             else
+               
                 MystrixHub.FarmController.DieToWave()
                 LocalPlayer.CharacterAdded:Wait()
             end
@@ -1599,36 +1611,37 @@ SpecificSection:Slider({
 
 -- Auto Farm Tab
 local KickSection = MystrixHub.UIController.Tabs.AutoFarm:Section({ Title = "Kick Power", Icon = "sfsymbols:figureKickboxing", Box = true, Opened = true })
-
 KickSection:Toggle({
-    Title    = "Auto Bonus",
+    Title    = "Auto 2x",
     Value    = false,
     Flag     = "bonusauto",
     Callback = function(state)
         if state then
             if MystrixHub.LiftController.AutoRunning then return end
             MystrixHub.LiftController.AutoRunning = true
-            MystrixHub.LiftController.AutoLoop = task.spawn(function()
-                local kickGui = LocalPlayer.PlayerGui:WaitForChild("KickUpgrades", 10)
-                if not kickGui then return end
-                local bonusTemplate = kickGui:FindFirstChild("Bonus")
-                while MystrixHub.LiftController.AutoRunning do
-                    pcall(function()
-                        for _, child in ipairs(kickGui:GetChildren()) do
-                            if child ~= bonusTemplate and child:IsA("ImageButton") and child.Visible then
-                                MystrixHub.Functions.FireRemote("rev_TaviMishkal")
-                                child:Destroy()
-                                task.wait(0.05)
-                            end
-                        end
-                    end)
-                    task.wait(0.2)
+
+            local kickGui = LocalPlayer.PlayerGui:WaitForChild("KickUpgrades", 10)
+            if not kickGui then
+                MystrixHub.LiftController.AutoRunning = false
+                return
+            end
+
+            local bonusTemplate = kickGui:FindFirstChild("Bonus")
+            local connection
+            connection = kickGui.ChildAdded:Connect(function(child)
+                if child ~= bonusTemplate and child:IsA("ImageButton") and child.Visible then
+                
+                    task.wait(0.25) 
+                
+                    firesignal(child.Activated)
                 end
             end)
+
+            MystrixHub.LiftController.AutoLoop = connection
         else
             MystrixHub.LiftController.AutoRunning = false
             if MystrixHub.LiftController.AutoLoop then
-                task.cancel(MystrixHub.LiftController.AutoLoop)
+                MystrixHub.LiftController.AutoLoop:Disconnect()
                 MystrixHub.LiftController.AutoLoop = nil
             end
         end
@@ -1682,12 +1695,30 @@ SpecVStack:Dropdown({
     Callback  = function(sel) MystrixHub.FarmController.SelectedSpecific = sel or {} end,
 })
 
-BrainrotSection:Slider({
-    Title    = "Speed",
+local SpeedLandingHStack = BrainrotSection:HStack()
+local SpeedLeftVStack   = SpeedLandingHStack:VStack()
+local LandingRightVStack = SpeedLandingHStack:VStack()
+
+SpeedLeftVStack:Slider({
+    Title    = "Flight Speed",
     Value    = { Min = 1, Max = 100, Default = 20 },
     Flag     = "afsl",
     Step     = 1,
     Callback = function(value) MystrixHub.FarmController.TweenSpeedMultiplier = value end,
+})
+
+LandingRightVStack:Dropdown({
+    Title     = "Landing",
+    Values    = {"Instant", "Normal"},
+    Value     = "Instant",   
+    Flag     = "afLandingAnim",
+    Callback  = function(value)
+        if value == "Instant" then
+            KickServiceClient.Multipliers.Speed = 1e6
+        else
+            KickServiceClient.Multipliers.Speed = MystrixHub.FarmController.DefaultLandingSpeed
+        end
+    end,
 })
 
 BrainrotSection:Toggle({
@@ -1742,7 +1773,7 @@ end)
 
 MystrixHub.UIController.Tabs.Home:Section({ Title = "Update", Icon = "solar:moon-fog-outline", Box = true, Opened = true }):Paragraph({
     Title   = "UPDATED — " .. MystrixHub.Meta.Version,
-    Desc    = " Beta Release! ",
+    Desc    = "• Auto 2X\n• Landing (Instant/Normal)\n• Anti AFK\n• Bug Fixes",
     Locked  = false,
     Buttons = {}
 })
@@ -1830,6 +1861,35 @@ LeftVStack:Section({ Title = "Keybinds", Icon = "keyboard", Box = true, Opened =
     Value    = "J",
     Flag     = "ToggleUI_Key",
     Callback = function(v) MystrixHub.UIController.Window:SetToggleKey(Enum.KeyCode[v]) end,
+})
+
+local MiscSection = LeftVStack:Section({ Title = "Misc", Icon = "shield-check", Box = true, Opened = true })
+
+local vu = game:GetService("VirtualUser")
+local antiAfkLoop = nil
+
+MiscSection:Toggle({
+    Title    = "Anti AFK",
+    Value    = false,
+    Flag     = "AntiAFK",
+    Callback = function(state)
+        if state then
+
+            antiAfkLoop = task.spawn(function()
+                while true do
+
+                    vu:CaptureController()
+                    vu:ClickButton2(Vector2.new())
+                    task.wait(60) 
+                end
+            end)
+        else
+            if antiAfkLoop then
+                task.cancel(antiAfkLoop)
+                antiAfkLoop = nil
+            end
+        end
+    end,
 })
 
 local ConfigSection = RightVStack:Section({ Title = "Config", Icon = "save", Box = true, Opened = true })
