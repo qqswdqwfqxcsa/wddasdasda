@@ -786,47 +786,67 @@ function MystrixHub.FarmController.FlyPath(root, speedMultiplier)
         tween.Completed:Wait()
     end
 end
-
 MystrixHub.FarmController.Start = function()
     if MystrixHub.FarmController.Running then return end
     MystrixHub.FarmController.Running = true
     MystrixHub.FarmController.Loop = task.spawn(function()
         while MystrixHub.FarmController.Running do
-            local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
-            if char:FindFirstChild("HumanoidRootPart") then
-                char.HumanoidRootPart.CFrame = CFrame.new(690, 3, 238)
-            end
-            task.wait(0.5)
+            local success, err = pcall(function()
+                local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
+                local root = char:WaitForChild("HumanoidRootPart", 10)
+                if not root then return end  
 
-           
-            MystrixHub.Functions.FireRemote("rev_KickEvent", 1)
-            task.wait(0.5)
+                root.CFrame = CFrame.new(690, 3, 238)
+                task.wait(0.5)
 
-            local attr      = LocalPlayer:GetAttribute("InGame")
-            local satisfied = MystrixHub.FarmController.IsConditionMet(attr)
+                MystrixHub.Functions.FireRemote("rev_KickEvent", 1)
+                task.wait(0.5)
 
-            MystrixHub.FarmController.WaitForRunVisible()
+                local attr      = LocalPlayer:GetAttribute("InGame")
+                local satisfied = MystrixHub.FarmController.IsConditionMet(attr)
 
-            if satisfied then
-                local root = char:FindFirstChild("HumanoidRootPart")
-                if root then
-                    MystrixHub.FarmController.FlyPath(root, MystrixHub.FarmController.TweenSpeedMultiplier)
+                local hud = LocalPlayer.PlayerGui:FindFirstChild("HUD") or LocalPlayer.PlayerGui:WaitForChild("HUD")
+                local runGui = hud:FindFirstChild("Run")
+                if runGui then
+                    local waited = 0
+                    repeat
+                        task.wait(0.1)
+                        waited = waited + 0.1
+                        if waited > 10 then break end  
+                    until runGui.Visible
+                    if not runGui.Visible then return end 
                 end
 
-                repeat
-                    MystrixHub.Functions.FireRemote("rev_KickCollect")
+                if satisfied then
+                    if root and root.Parent then
+                        MystrixHub.FarmController.FlyPath(root, MystrixHub.FarmController.TweenSpeedMultiplier)
+                    end
+                    repeat
+                        MystrixHub.Functions.FireRemote("rev_KickCollect")
+                        task.wait(0.5)
+                        char = LocalPlayer.Character
+                    until (char and char:FindFirstChildOfClass("Tool"))
+
+                else
                     task.wait(0.5)
-                    char = LocalPlayer.Character
-                until char and char:FindFirstChildOfClass("Tool")
-            else
-               
-                MystrixHub.FarmController.DieToWave()
-                LocalPlayer.CharacterAdded:Wait()
+                    local hum = char:FindFirstChildOfClass("Humanoid")
+                    if hum and hum.Health > 0 then
+                        hum.Health = 0
+                    end
+                    local newChar = LocalPlayer.CharacterAdded:Wait()
+                    if newChar then
+                        newChar:WaitForChild("HumanoidRootPart", 10)
+                    end
+                end
+            end)
+
+            if not success then
+                warn("[Auto Farm Error]", err)
             end
+            task.wait(1)
         end
     end)
 end
-
 function MystrixHub.FarmController.Stop()
     MystrixHub.FarmController.Running = false
     if MystrixHub.FarmController.Loop then
