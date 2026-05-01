@@ -31,7 +31,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v1.2"
+local CURRENT_VERSION  = "v1.3"
 local DISCORD_INVITE   = "XV66VWqAaN"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "MystrixHubKAL"
@@ -547,6 +547,7 @@ function MystrixHub.Functions.FetchDiscordInfo()
     MystrixHub.Meta.OnlineCount = "Unavailable"
     return false
 end
+
 local KickServiceClient = require(game:GetService("ReplicatedStorage").Modules.ServicesLoader.KickServiceClient)
 MystrixHub.FarmController.DefaultLandingSpeed = KickServiceClient.Multipliers.Speed or 1
 KickServiceClient.Multipliers.Speed = 1e6
@@ -555,6 +556,18 @@ local WaveData = require(game:GetService("ReplicatedStorage").Shared.Data.WaveDa
 for _, wave in pairs(WaveData.Waves) do
     wave.Speed = 0
 end
+local AnimationController = require(game:GetService("ReplicatedStorage").Modules.ControllerLoader.AnimationController)
+local originalPlayAnim = AnimationController.PlayAnim  
+
+local function fastPlayAnim(animName)
+    local track = originalPlayAnim(animName)
+    if track then
+        track:AdjustSpeed(1000)  
+    end
+    return track
+end
+
+MystrixHub.FarmController.AnimationHooked = false
 function MystrixHub.Functions.ApplyTransparency()
     if MystrixHub.UIController.WinBG then
         MystrixHub.UIController.WinBG.ImageTransparency = MystrixHub.UIController.BGTransparency
@@ -789,92 +802,154 @@ end
 MystrixHub.FarmController.Start = function()
     if MystrixHub.FarmController.Running then return end
     MystrixHub.FarmController.Running = true
+    if not MystrixHub.FarmController._AnimationHooked then
+        local ok, err = pcall(function()
+            local AnimationController = require(game:GetService("ReplicatedStorage").Modules.ControllerLoader.AnimationController)
+            local origPlay = AnimationController.PlayAnim
+            AnimationController.PlayAnim = function(name)
+                local track = origPlay(name)
+                if track then track:AdjustSpeed(1000) end
+                return track
+            end
+            MystrixHub.FarmController._AnimCtrl = AnimationController
+            MystrixHub.FarmController._OrigPlayAnim = origPlay
+            MystrixHub.FarmController._AnimationHooked = true
+        end)
+        if not ok then warn("Animation hook failed: "..tostring(err)) end
+    end
+    if not MystrixHub.FarmController._TransformHooked then
+        local ok, err = pcall(function()
+            local VFX = require(game:GetService("ReplicatedStorage").Modules.ServicesLoader.VFXService)
+            local orig = VFX.PlayVFX
+            VFX.PlayVFX = function(name, ...)
+                if name == "AnimateBrainrots" then return end
+                return orig(name, ...)
+            end
+            MystrixHub.FarmController._VFX = VFX
+            MystrixHub.FarmController._OrigPlayVFX = orig
+            MystrixHub.FarmController._TransformHooked = true
+        end)
+        if not ok then warn("Transform hook failed: "..tostring(err)) end
+    end
+
     MystrixHub.FarmController.IsCollecting = false
+    local rev_KickCollect = game:GetService("ReplicatedStorage").Shared.Packages.Network.rev_KickCollect
 
     MystrixHub.FarmController.Loop = task.spawn(function()
         while MystrixHub.FarmController.Running do
-            local success, err = pcall(function()
+            local ok, err = pcall(function()
                 MystrixHub.FarmController.IsCollecting = false
-
                 local char = LocalPlayer.Character or LocalPlayer.CharacterAdded:Wait()
                 local root = char:WaitForChild("HumanoidRootPart", 10)
                 if not root then return end
-
                 root.CFrame = CFrame.new(690, 3, 238)
-                task.wait(0.5)
+                task.wait(0.3)   
 
                 MystrixHub.Functions.FireRemote("rev_KickEvent", 1)
-                task.wait(0.5)
+                task.wait(0.3)   
 
-                local attr      = LocalPlayer:GetAttribute("InGame")
+                local attr = LocalPlayer:GetAttribute("InGame")
                 local satisfied = MystrixHub.FarmController.IsConditionMet(attr)
-
                 local hud = LocalPlayer.PlayerGui:FindFirstChild("HUD") or LocalPlayer.PlayerGui:WaitForChild("HUD")
                 local runGui = hud:FindFirstChild("Run")
                 if runGui then
-                    local waited = 0
-                    repeat
-                        task.wait(0.1)
-                        waited = waited + 0.1
-                        if waited > 10 then break end
-                    until runGui.Visible
+                    local t = 0
+                    repeat task.wait(0.1) t = t + 0.1 if t > 10 then break end until runGui.Visible
                     if not runGui.Visible then return end
                 end
-
-                if satisfied then
+                               if satisfied then
                     MystrixHub.FarmController.IsCollecting = true
-
                     local function getTools()
                         local t = {}
                         if char then
-                            for _, obj in ipairs(char:GetChildren()) do
-                                if obj:IsA("Tool") then t[obj] = true end
+                            for _, o in ipairs(char:GetChildren()) do
+                                if o:IsA("Tool") then t[o] = true end
                             end
                         end
-                        local back = LocalPlayer.Backpack
-                        if back then
-                            for _, obj in ipairs(back:GetChildren()) do
-                                if obj:IsA("Tool") then t[obj] = true end
+                        local bk = LocalPlayer.Backpack
+                        if bk then
+                            for _, o in ipairs(bk:GetChildren()) do
+                                if o:IsA("Tool") then t[o] = true end
                             end
                         end
                         return t
                     end
-
-                    local oldTools = getTools()
-
+                    local old = getTools()
                     if root and root.Parent then
                         MystrixHub.FarmController.FlyPath(root, MystrixHub.FarmController.TweenSpeedMultiplier)
                     end
 
+                    local newTool = nil
                     repeat
-                        task.wait(0.5)
+                        rev_KickCollect:FireServer()
+                        task.wait(0.1)
                         char = LocalPlayer.Character
-                        local currentTools = getTools()
-                        local newTool = nil
-                        for tool in pairs(currentTools) do
-                            if not oldTools[tool] then
-                                newTool = tool
+                        local cur = getTools()
+                        for tool in pairs(cur) do
+                            if not old[tool] then
+                                newTool = tool  
                                 break
                             end
                         end
                     until newTool
+
+                                       if MystrixHub.WebhookController.Enabled and newTool then
+                        task.spawn(function()
+                            task.wait(1)
+
+                            local toolName = newTool.Name or "Unknown"
+                            local rarity  = MystrixHub.Functions.GetRarityOfBrainrot(toolName)
+
+                            local mutation = newTool:GetAttribute("Mutation")
+                                or newTool:GetAttribute("MutationType")
+                                or newTool:GetAttribute("Mut")
+                                or "None"
+
+                            if not rarity then return end
+
+                            local rarityOk   = (#MystrixHub.WebhookController.SelectedRarities == 0) or table.find(MystrixHub.WebhookController.SelectedRarities, rarity)
+                            local specificOk = (#MystrixHub.WebhookController.SelectedSpecific == 0) or table.find(MystrixHub.WebhookController.SelectedSpecific, toolName)
+
+                            local mutationOk = false
+                            for _, m in ipairs(MystrixHub.WebhookController.SelectedMutations) do
+                                if m == "Any" or m == mutation then
+                                    mutationOk = true
+                                    break
+                                end
+                            end
+
+                            if rarityOk and specificOk and mutationOk then
+                                local color = ({
+                                    Common    = 0xCECECE, Rare      = 0x35DDFF, Epic      = 0xAE49BB,
+                                    Legendary = 0xFFD043, Mythic    = 0xFF00FF, Godly     = 0xFF00FF,
+                                    Secret    = 0xFF0000, OG        = 0xFFA500, Hacked    = 0x00FF00,
+                                    Divine    = 0xFFFF00, Celestial = 0xFF96FF, Exclusive = 0xFF0000,
+                                })[rarity] or 0x6c63ff
+
+                                local desc = "**Rarity:** " .. rarity
+                                    .. "\n**Name:** " .. toolName
+                                    .. "\n**Mutation:** " .. mutation
+
+                                MystrixHub.Functions.SendWebhook("Brainrot Collected", desc, color)
+                            end
+                        end)
+                    end
                 else
-                    task.wait(0.5)
+                    task.wait(0.5)   
                     local hum = char:FindFirstChildOfClass("Humanoid")
                     if hum and hum.Health > 0 then
                         hum.Health = 0
                     end
-                    local newChar = LocalPlayer.CharacterAdded:Wait()
-                    if newChar then
-                        newChar:WaitForChild("HumanoidRootPart", 10)
+                    local nc = LocalPlayer.CharacterAdded:Wait()
+                    if nc then
+                        nc:WaitForChild("HumanoidRootPart", 10)
                     end
                 end
             end)
-
-            if not success then
-                warn("[Auto Farm Error]", err)
+            if not ok then
+                warn("[Farm Error] " .. tostring(err))
             end
-            task.wait(1)
+            task.wait(0.5)   
         end
     end)
 
@@ -885,12 +960,40 @@ MystrixHub.FarmController.Start = function()
         end
     end)
 end
+
 function MystrixHub.FarmController.Stop()
     MystrixHub.FarmController.Running = false
     if MystrixHub.FarmController.Loop then
         task.cancel(MystrixHub.FarmController.Loop)
         MystrixHub.FarmController.Loop = nil
     end
+
+    if MystrixHub.FarmController._AnimationHooked and MystrixHub.FarmController._AnimCtrl then
+        MystrixHub.FarmController._AnimCtrl.PlayAnim = MystrixHub.FarmController._OrigPlayAnim
+    end
+if MystrixHub.FarmController._WaveHooked and MystrixHub.FarmController._OrigTweenCreate then
+        hookfunction(game:GetService("TweenService").Create, MystrixHub.FarmController._OrigTweenCreate)
+    end
+    if MystrixHub.FarmController._TC and MystrixHub.FarmController._OrigTransform then
+        MystrixHub.FarmController._TC.TransformToBrainrot = MystrixHub.FarmController._OrigTransform
+    end
+    if MystrixHub.FarmController._TransformHooked and MystrixHub.FarmController._VFX then
+        MystrixHub.FarmController._VFX.PlayVFX = MystrixHub.FarmController._OrigPlayVFX
+    end
+
+    local char = LocalPlayer.Character
+    if char then
+        local hum = char:FindFirstChildOfClass("Humanoid")
+        if hum and hum.Animator then
+            for _, t in ipairs(hum.Animator:GetPlayingAnimationTracks()) do
+                t:AdjustSpeed(1)
+            end
+        end
+    end
+
+    MystrixHub.FarmController._AnimationHooked = false
+    MystrixHub.FarmController._WaveHooked = false
+    MystrixHub.FarmController._TransformHooked = false
 end
 
 function MystrixHub.CoinsController.Start()
@@ -1183,8 +1286,8 @@ MystrixHub.UIController.Tabs.Brainrots = MystrixHub.UIController.Window:Tab({ Ti
 MystrixHub.UIController.Tabs.Upgrades  = MystrixHub.UIController.Window:Tab({ Title = "Upgrades",  Icon = "solar:graph-up-line-duotone" })
 MystrixHub.UIController.Tabs.Sell      = MystrixHub.UIController.Window:Tab({ Title = "Sell",      Icon = "solar:dollar-bold" })
 MystrixHub.UIController.Tabs.AutoFarm  = MystrixHub.UIController.Window:Tab({ Title = "Auto Farm", Icon = "solar:cloudy-moon-outline" })
+MystrixHub.UIController.Tabs.Webhook = MystrixHub.UIController.Window:Tab({ Title = "Webhook", Icon = "webhook" })
 MystrixHub.UIController.Tabs.Settings  = MystrixHub.UIController.Window:Tab({ Title = "Settings",  Icon = "settings" })
-
 MystrixHub.UIController.Tabs.Home:Select()
 
 -- Brainrots Tab
@@ -1670,7 +1773,7 @@ SpecificSection:Slider({
 -- Auto Farm Tab
 local KickSection = MystrixHub.UIController.Tabs.AutoFarm:Section({ Title = "Kick Power", Icon = "sfsymbols:figureKickboxing", Box = true, Opened = true })
 KickSection:Toggle({
-    Title    = "Auto 2x",
+    Title    = "Auto x2 Bonus",
     Value    = false,
     Flag     = "bonusauto",
     Callback = function(state)
@@ -1831,9 +1934,115 @@ end)
 
 MystrixHub.UIController.Tabs.Home:Section({ Title = "Update", Icon = "solar:moon-fog-outline", Box = true, Opened = true }):Paragraph({
     Title   = "UPDATED — " .. MystrixHub.Meta.Version,
-    Desc    = "• WONT DIE AT ANY SPEEDS!",
+    Desc    = "• Skipped Kicking Cutscene\n• Skipped Rolling Brainrot Animation \n• Webhook Tab",
     Locked  = false,
     Buttons = {}
+})
+
+
+MystrixHub.WebhookController = {
+    URL = "",
+    Enabled = false,
+    SelectedRarities = {},
+    SelectedMutations = {"Any"},
+    SelectedSpecific = {},
+}
+
+function MystrixHub.Functions.SendWebhook(title, description, colorHex)
+    local url = MystrixHub.WebhookController.URL
+    if not url or url == "" then return end
+
+    local payload = {
+        username = "Mystrix Hub",
+        content = "@everyone",
+        embeds = {{
+            title       = title,
+            description = description,
+            color       = colorHex or 0x6c63ff,
+            footer      = { text = LocalPlayer.Name },
+            timestamp   = os.date("!%Y-%m-%dT%H:%M:%SZ"),
+        }},
+    }
+
+    local body = HttpService:JSONEncode(payload)
+    task.spawn(function()
+        MystrixHub.Functions.MakeRawRequest(url, "POST", {["Content-Type"] = "application/json"}, body)
+    end)
+end
+
+local WebhookSetup = MystrixHub.UIController.Tabs.Webhook:Section({ Title = "Setup", Icon = "link", Box = true, Opened = true })
+
+WebhookSetup:Input({
+    Title       = "Webhook URL",
+    Flag        = "WebhookURL",
+    Placeholder = "https://discord.com/api/webhooks/...",
+    Callback    = function(value)
+        MystrixHub.WebhookController.URL = value or ""
+    end,
+})
+
+WebhookSetup:Button({
+    Title    = "Send Test Message",
+    Icon     = "send",
+    Callback = function()
+        if MystrixHub.WebhookController.URL == "" then
+            WindUI:Notify({ Title = "No URL", Content = "Enter a webhook URL first!", Duration = 3, Icon = "alert-circle" })
+            return
+        end
+        task.spawn(function()
+            MystrixHub.Functions.SendWebhook("Player Connected", "**Player:** " .. LocalPlayer.Name .. "\nWebhook is working!", 0x57F287)
+        end)
+    end,
+})
+WebhookSetup:Toggle({
+    Title    = "Enable Webhook",
+    Flag     = "WebhookEnabled",
+    Value    = false,
+    Callback = function(state)
+        MystrixHub.WebhookController.Enabled = state
+    end,
+})
+
+local WebhookFilters = MystrixHub.UIController.Tabs.Webhook:Section({ Title = "Filters", Icon = "send-to-back", Box = true, Opened = true })
+
+WebhookFilters:Dropdown({
+    Title     = "Rarity",
+    Values    = MystrixHub.RarityOrder,
+    Multi     = true,
+    AllowNone = true,
+    Flag     = "WebhookRarity",
+    Value     = {},
+    Callback  = function(sel) MystrixHub.WebhookController.SelectedRarities = sel or {} end,
+})
+
+WebhookFilters:Dropdown({
+    Title     = "Mutation",
+    Values    = {"Any","None","Golden","Diamond","Plasma","Radioactive","Molten","Void","Shadow","Electrified","Rainbow"},
+    Multi     = true,
+    AllowNone = true,
+    Flag     = "WebhookMutation",
+    Value     = {"Any"},
+    Callback  = function(sel) MystrixHub.WebhookController.SelectedMutations = sel or {} end,
+})
+
+local allBrainrotNames = {}
+for _, rarity in ipairs(MystrixHub.RarityOrder) do
+    local names = MystrixHub.RarityData[rarity]
+    if names then
+        for _, name in ipairs(names) do
+            table.insert(allBrainrotNames, name)
+        end
+    end
+end
+
+WebhookFilters:Dropdown({
+    Title     = "Specific Brainrot",
+    Values    = allBrainrotNames,
+    Multi     = true,
+    AllowNone = true,
+    Flag     = "WebhookSpecific",
+    Value     = {},
+    Callback  = function(sel) MystrixHub.WebhookController.SelectedSpecific = sel or {} end,
 })
 
 -- Settings Tab
