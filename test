@@ -514,8 +514,9 @@ function MystrixHub.Functions.StartAutoWheelie()
 
     local UserInputService = game:GetService("UserInputService")
     local mobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-    local loopDt = mobile and 0.05 or 0.03
-    local rayStride = mobile and 4 or 1
+
+    local logicInterval = mobile and 0.045 or 0.02
+    local rayEvery      = mobile and 14   or 4
 
     local RS = game:GetService("ReplicatedStorage")
     local SR = RS:WaitForChild("ScooterRemotes")
@@ -584,13 +585,26 @@ function MystrixHub.Functions.StartAutoWheelie()
 
     if M.AutoWheelieLoop then task.cancel(M.AutoWheelieLoop) end
     M.AutoWheelieLoop = task.spawn(function()
+        local HB = RunService.Heartbeat
+
         local wasMounted = false
         local prevPitch = 0
         local pulseAccum = 0
         local frameIdx = 0
+        local accum = 0
+
+        local cachedScooter, cachedBody, cachedBodyName
+        local surfacePenalty = 0
+        local penaltyFrames = 0
 
         while M.AutoWheelie do
+            local realDt = HB:Wait()
+            accum = accum + realDt
+            if accum < logicInterval then continue end
+            local dt = accum
+            accum = 0
             frameIdx = frameIdx + 1
+
             local char = LocalPlayer.Character
             local hrp = char and char:FindFirstChild("HumanoidRootPart")
             local weld = hrp and hrp:FindFirstChild("ScooterMountWeld")
@@ -608,28 +622,37 @@ function MystrixHub.Functions.StartAutoWheelie()
                 end
 
                 local scooter = weld.Part0 and weld.Part0:FindFirstAncestorOfClass("Model")
+                if scooter ~= cachedScooter then
+                    cachedScooter = scooter
+                    if scooter then
+                        cachedBodyName = scooter:GetAttribute("DriveRootName") or "Body"
+                        cachedBody = scooter:FindFirstChild(cachedBodyName)
+                    else
+                        cachedBody = nil
+                        cachedBodyName = nil
+                    end
+                end
+
+                local body = cachedBody
                 local pitch = 0
-                local roll = 0
-                local surfacePenalty = 0
+                local roll  = 0
 
-                if scooter then
-                    local body = scooter:FindFirstChild(scooter:GetAttribute("DriveRootName") or "Body")
-                    if body then
-                        local look = body.CFrame.LookVector
-                        pitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
-                        local right = body.CFrame.RightVector
-                        roll = math.deg(math.asin(math.clamp(right.Y, -1, 1)))
+                if scooter and body and body.Parent then
+                    local look = body.CFrame.LookVector
+                    pitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
+                    local right = body.CFrame.RightVector
+                    roll  = math.deg(math.asin(math.clamp(right.Y, -1, 1)))
 
-                        if frameIdx % rayStride == 0 then
-                            M.AutoWheelieRay.FilterDescendantsInstances = { char, scooter }
-                            local hit = workspace:Raycast(body.Position, Vector3.new(0, -8, 0), M.AutoWheelieRay)
-                            if hit then
-                                local mat = hit.Instance.Material
-                                if mat == Enum.Material.Grass or mat == Enum.Material.LeafyGrass
-                                   or mat == Enum.Material.Mud or mat == Enum.Material.Sand
-                                   or mat == Enum.Material.Snow or mat == Enum.Material.Ground then
-                                    surfacePenalty = 6
-                                end
+                    if frameIdx % rayEvery == 0 then
+                        M.AutoWheelieRay.FilterDescendantsInstances = { char, scooter }
+                        local hit = workspace:Raycast(body.Position, Vector3.new(0, -8, 0), M.AutoWheelieRay)
+                        surfacePenalty = 0
+                        if hit then
+                            local mat = hit.Instance.Material
+                            if mat == Enum.Material.Grass or mat == Enum.Material.LeafyGrass
+                               or mat == Enum.Material.Mud or mat == Enum.Material.Sand
+                               or mat == Enum.Material.Snow or mat == Enum.Material.Ground then
+                                surfacePenalty = 6
                             end
                         end
                     end
@@ -638,7 +661,6 @@ function MystrixHub.Functions.StartAutoWheelie()
                 local rollPenalty = math.min(15, math.abs(roll) * 0.35)
                 local effPitch = pitch + rollPenalty
 
-                local dt = loopDt
                 local vel = (pitch - prevPitch) / dt
                 prevPitch = pitch
                 local predicted = effPitch + vel * 0.15 + surfacePenalty
@@ -665,11 +687,11 @@ function MystrixHub.Functions.StartAutoWheelie()
 
                 if M.AutoWheelieLastT ~= newT then
                     M.AutoWheelieLastT = newT
-                    pcall(function() LocalPlayer:SetAttribute("ScooterLocalThrottle", newT) end)
+                    LocalPlayer:SetAttribute("ScooterLocalThrottle", newT)
                 end
                 if M.AutoWheelieLastB ~= 0 then
                     M.AutoWheelieLastB = 0
-                    pcall(function() LocalPlayer:SetAttribute("ScooterLocalBrake", 0) end)
+                    LocalPlayer:SetAttribute("ScooterLocalBrake", 0)
                 end
 
                 if pitch >= 8 then
@@ -680,7 +702,7 @@ function MystrixHub.Functions.StartAutoWheelie()
                         pulseAccum = 0
                         M.AutoWheeliePulse = 1
                         M.AutoWheelieAllow0 = true
-                        pcall(function() LocalPlayer:SetAttribute("ScooterLocalWheelie", 0) end)
+                        LocalPlayer:SetAttribute("ScooterLocalWheelie", 0)
                     end
                 else
                     pulseAccum = 0
@@ -695,10 +717,11 @@ function MystrixHub.Functions.StartAutoWheelie()
                     M.AutoWheelieBrake = 0
                     M.AutoWheelieLastT = nil
                     M.AutoWheelieLastB = nil
+                    cachedScooter = nil
+                    cachedBody = nil
+                    cachedBodyName = nil
                 end
             end
-
-            task.wait(loopDt)
         end
     end)
     MystrixHub.TasksController.Insert(M.AutoWheelieLoop)
@@ -1051,16 +1074,27 @@ function MystrixHub.Functions.StartAutoFarm()
         local RS2 = game:GetService("ReplicatedStorage")
         local SR2 = RS2:WaitForChild("ScooterRemotes")
         local SI  = SR2:WaitForChild("ScooterInput")
+        local HB  = RunService.Heartbeat
+
+        local cachedScooter, cachedBody, cachedBodyName
 
         while C.Enabled do
+            HB:Wait()
+
             local ch = LocalPlayer.Character
             local h  = ch and ch:FindFirstChild("HumanoidRootPart")
             local w  = h and h:FindFirstChild("ScooterMountWeld")
             local sc = w and w.Part0 and w.Part0:FindFirstAncestorOfClass("Model")
 
             if sc then
-                local bd = sc:FindFirstChild(sc:GetAttribute("DriveRootName") or "Body")
-                if bd then
+                if sc ~= cachedScooter then
+                    cachedScooter = sc
+                    cachedBodyName = sc:GetAttribute("DriveRootName") or "Body"
+                    cachedBody = sc:FindFirstChild(cachedBodyName)
+                end
+
+                local bd = cachedBody
+                if bd and bd.Parent then
                     local vel = bd.AssemblyLinearVelocity
                     local speed = Vector3.new(vel.X, 0, vel.Z).Magnitude / 1.56
                     local top = tonumber(sc:GetAttribute("TopSpeedKmh")) or C.FinalTopSpeed or 60
@@ -1121,25 +1155,25 @@ function MystrixHub.Functions.StartAutoFarm()
 
                     C.CurrentSteerValue = steerValue
 
-                    pcall(function()
-                        LocalPlayer:SetAttribute("ScooterLocalSteer",    steerValue)
-                        LocalPlayer:SetAttribute("ScooterLocalThrottle", 1)
-                        LocalPlayer:SetAttribute("ScooterLocalBrake",    0)
-                        LocalPlayer:SetAttribute("ScooterLocalWheelie",  1)
-                    end)
-                    pcall(function()
-                        SI:FireServer({
-                            throttle = 1,
-                            brake    = 0,
-                            steer    = steerValue,
-                            wheelie  = 1,
-                            dismount = false,
-                            stamp    = os.clock()
-                        })
-                    end)
+                    LocalPlayer:SetAttribute("ScooterLocalSteer",    steerValue)
+                    LocalPlayer:SetAttribute("ScooterLocalThrottle", 1)
+                    LocalPlayer:SetAttribute("ScooterLocalBrake",    0)
+                    LocalPlayer:SetAttribute("ScooterLocalWheelie",  1)
+
+                    SI:FireServer({
+                        throttle = 1,
+                        brake    = 0,
+                        steer    = steerValue,
+                        wheelie  = 1,
+                        dismount = false,
+                        stamp    = os.clock()
+                    })
                 end
+            else
+                cachedScooter = nil
+                cachedBody = nil
+                cachedBodyName = nil
             end
-            task.wait(0.05)
         end
     end)
     MystrixHub.TasksController.Insert(C.SteerLoop)
@@ -1149,7 +1183,7 @@ function MystrixHub.Functions.StartAutoFarm()
         local remounting = false
 
         while C.Enabled do
-            task.wait(0.4)
+            task.wait(0.5)
 
             local ch = LocalPlayer.Character
             local h  = ch and ch:FindFirstChild("HumanoidRootPart")
