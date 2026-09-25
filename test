@@ -34,7 +34,7 @@ local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94
 local CURRENT_VERSION  = "v1.0.0"
 local DISCORD_INVITE   = "46JkThWjPB"
 local HUB_LOGO         = "rbxassetid://85997568026025"
-local GAME_FOLDER_NAME = "DriveAKukirin"
+local GAME_FOLDER_NAME = "LootToForge"
 local GAME_FOLDER_PATH = "WindUI/" .. GAME_FOLDER_NAME
 local EXEC_DATA_FILE   = "WindUI/NebulAuth_ExecData.json"
 local USE_KEY_SYSTEM   = false
@@ -145,49 +145,6 @@ getgenv().MystrixHub = {
         HwidDisplay  = "N/A",
         ResetText    = "No",
         ExecCountStr = "INF",
-    },
-
-    MainController = {
-        AutoWheelie         = false,
-        AutoWheelieLoop     = nil,
-        AutoWheelieRender   = nil,
-        AutoWheelieHook     = false,
-        AutoWheelieConn     = nil,
-        AutoWheelieThrottle = 1,
-        AutoWheelieBrake    = 0,
-        AutoWheelieAllow0   = false,
-        AutoWheeliePulse    = 0,
-        AutoWheelieRay      = nil,
-        AutoWheelieLastT    = nil,
-        AutoWheelieLastB    = nil,
-        AutoWheelieMounted  = false,
-    },
-
-    SpeedBoostController = {
-        Enabled       = false,
-        Multiplier    = 1,
-        HookInstalled = false,
-        Connection    = nil,
-    },
-
-    QuestAutoClaimController = {
-        Enabled         = false,
-        Loop            = nil,
-        RefreshLoop     = nil,
-        ScanInterval    = 3,
-        RefreshInterval = 15,
-        LastRefreshAt   = 0,
-    },
-    
-    AutoFarmController = {
-        Enabled        = false,
-        Scooter        = nil,
-        Body           = nil,
-        BestScooter    = nil,
-        SteerHooked    = false,
-        WasWheelieOn   = false,
-        TeleportPos    = Vector3.new(3086, 4, -2683),
-        SteerDirection = 1,
     },
 
     ConnectionController = {
@@ -495,915 +452,6 @@ function MystrixHub.Functions.FetchDiscordInfo()
     MystrixHub.Meta.MemberCount = "Unavailable"
     MystrixHub.Meta.OnlineCount = "Unavailable"
     return false
-end
-
-function MystrixHub.Functions.StartAutoWheelie()
-    local M = MystrixHub.MainController
-    if M.AutoWheelie then return end
-    M.AutoWheelie = true
-    M.AutoWheelieThrottle = 1
-    M.AutoWheelieBrake = 0
-    M.AutoWheelieAllow0 = false
-    M.AutoWheeliePulse = 0
-    M.AutoWheelieLastT = nil
-    M.AutoWheelieLastB = nil
-    M.AutoWheelieMounted = false
-    M.AutoWheelieRay = RaycastParams.new()
-    M.AutoWheelieRay.FilterType = Enum.RaycastFilterType.Exclude
-    M.AutoWheelieRay.IgnoreWater = true
-
-    local UserInputService = game:GetService("UserInputService")
-    local mobile = UserInputService.TouchEnabled and not UserInputService.KeyboardEnabled
-
-    local logicInterval = mobile and 0.045 or 0.02
-    local rayEvery      = mobile and 14   or 4
-
-    local RS = game:GetService("ReplicatedStorage")
-    local SR = RS:WaitForChild("ScooterRemotes")
-    local ScooterInput = SR:WaitForChild("ScooterInput")
-
-    if M.AutoWheelieConn then M.AutoWheelieConn:Disconnect() M.AutoWheelieConn = nil end
-
-    if not M.AutoWheelieHook then
-        M.AutoWheelieHook = true
-        local oldNamecall
-        oldNamecall = hookmetamethod(game, "__namecall", newcclosure(function(self, ...)
-            local method = getnamecallmethod()
-            local AF = MystrixHub.AutoFarmController
-
-            if method == "SetAttribute" and self == LocalPlayer then
-                local args = {...}
-                local name = args[1]
-
-                if AF and AF.Enabled and AF.CurrentSteerValue ~= nil and name == "ScooterLocalSteer" then
-                    args[2] = AF.CurrentSteerValue
-                end
-
-                if M.AutoWheelie and M.AutoWheelieMounted then
-                    if name == "ScooterLocalThrottle" then
-                        args[2] = M.AutoWheelieThrottle
-                    elseif name == "ScooterLocalBrake" then
-                        args[2] = M.AutoWheelieBrake
-                    elseif name == "ScooterLocalWheelie" and args[2] == 0 and not M.AutoWheelieAllow0 then
-                        args[2] = 1
-                    end
-                end
-
-                return oldNamecall(self, table.unpack(args))
-            end
-
-            if method == "FireServer" and self == ScooterInput then
-                local args = {...}
-                if typeof(args[1]) == "table" then
-                    if AF and AF.Enabled and AF.CurrentSteerValue ~= nil then
-                        args[1].steer = AF.CurrentSteerValue
-                    end
-                    if M.AutoWheelie and M.AutoWheelieMounted then
-                        args[1].wheelie  = M.AutoWheelieAllow0 and 0 or 1
-                        args[1].throttle = M.AutoWheelieThrottle
-                        args[1].brake    = M.AutoWheelieBrake
-                    end
-                end
-                return oldNamecall(self, table.unpack(args))
-            end
-
-            return oldNamecall(self, ...)
-        end))
-    end
-
-    if M.AutoWheelieRender then M.AutoWheelieRender:Disconnect() end
-    M.AutoWheelieRender = RunService.RenderStepped:Connect(function()
-        if M.AutoWheeliePulse == 1 then
-            M.AutoWheeliePulse = 2
-            M.AutoWheelieAllow0 = false
-            pcall(function() LocalPlayer:SetAttribute("ScooterLocalWheelie", 1) end)
-        elseif M.AutoWheeliePulse == 2 then
-            M.AutoWheeliePulse = 0
-        end
-    end)
-    MystrixHub.ConnectionController.Insert(M.AutoWheelieRender)
-
-    if M.AutoWheelieLoop then task.cancel(M.AutoWheelieLoop) end
-    M.AutoWheelieLoop = task.spawn(function()
-        local HB = RunService.Heartbeat
-
-        local wasMounted = false
-        local prevPitch = 0
-        local pulseAccum = 0
-        local frameIdx = 0
-        local accum = 0
-
-        local cachedScooter, cachedBody, cachedBodyName
-        local surfacePenalty = 0
-        local penaltyFrames = 0
-
-        while M.AutoWheelie do
-            local realDt = HB:Wait()
-            accum = accum + realDt
-            if accum < logicInterval then continue end
-            local dt = accum
-            accum = 0
-            frameIdx = frameIdx + 1
-
-            local char = LocalPlayer.Character
-            local hrp = char and char:FindFirstChild("HumanoidRootPart")
-            local weld = hrp and hrp:FindFirstChild("ScooterMountWeld")
-
-            if weld then
-                if not wasMounted then
-                    wasMounted = true
-                    prevPitch = 0
-                    pulseAccum = 0.9
-                    M.AutoWheelieAllow0 = false
-                    M.AutoWheeliePulse = 0
-                    M.AutoWheelieMounted = false
-                    task.wait(0.4)
-                    M.AutoWheelieMounted = true
-                end
-
-                local scooter = weld.Part0 and weld.Part0:FindFirstAncestorOfClass("Model")
-                if scooter ~= cachedScooter then
-                    cachedScooter = scooter
-                    if scooter then
-                        cachedBodyName = scooter:GetAttribute("DriveRootName") or "Body"
-                        cachedBody = scooter:FindFirstChild(cachedBodyName)
-                    else
-                        cachedBody = nil
-                        cachedBodyName = nil
-                    end
-                end
-
-                local body = cachedBody
-                local pitch = 0
-                local roll  = 0
-
-                if scooter and body and body.Parent then
-                    local look = body.CFrame.LookVector
-                    pitch = math.deg(math.asin(math.clamp(look.Y, -1, 1)))
-                    local right = body.CFrame.RightVector
-                    roll  = math.deg(math.asin(math.clamp(right.Y, -1, 1)))
-
-                    if frameIdx % rayEvery == 0 then
-                        M.AutoWheelieRay.FilterDescendantsInstances = { char, scooter }
-                        local hit = workspace:Raycast(body.Position, Vector3.new(0, -8, 0), M.AutoWheelieRay)
-                        surfacePenalty = 0
-                        if hit then
-                            local mat = hit.Instance.Material
-                            if mat == Enum.Material.Grass or mat == Enum.Material.LeafyGrass
-                               or mat == Enum.Material.Mud or mat == Enum.Material.Sand
-                               or mat == Enum.Material.Snow or mat == Enum.Material.Ground then
-                                surfacePenalty = 6
-                            end
-                        end
-                    end
-                end
-
-                local rollPenalty = math.min(15, math.abs(roll) * 0.35)
-                local effPitch = pitch + rollPenalty
-
-                local vel = (pitch - prevPitch) / dt
-                prevPitch = pitch
-                local predicted = effPitch + vel * 0.15 + surfacePenalty
-
-                local newT
-                if predicted > 74 or effPitch > 74 then
-                    newT = 0
-                elseif predicted > 68 or effPitch > 68 then
-                    newT = 0.05
-                elseif predicted > 62 or effPitch > 62 then
-                    newT = 0.15
-                elseif predicted > 55 or effPitch > 55 then
-                    newT = 0.35
-                elseif predicted > 45 or effPitch > 45 then
-                    newT = 0.60
-                elseif predicted > 30 or effPitch > 30 then
-                    newT = 0.85
-                else
-                    newT = 1
-                end
-
-                M.AutoWheelieThrottle = newT
-                M.AutoWheelieBrake = 0
-
-                if M.AutoWheelieLastT ~= newT then
-                    M.AutoWheelieLastT = newT
-                    LocalPlayer:SetAttribute("ScooterLocalThrottle", newT)
-                end
-                if M.AutoWheelieLastB ~= 0 then
-                    M.AutoWheelieLastB = 0
-                    LocalPlayer:SetAttribute("ScooterLocalBrake", 0)
-                end
-
-                if pitch >= 8 then
-                    pulseAccum = 0
-                elseif pitch < 4 then
-                    pulseAccum = pulseAccum + dt
-                    if pulseAccum >= 2.5 and M.AutoWheeliePulse == 0 then
-                        pulseAccum = 0
-                        M.AutoWheeliePulse = 1
-                        M.AutoWheelieAllow0 = true
-                        LocalPlayer:SetAttribute("ScooterLocalWheelie", 0)
-                    end
-                else
-                    pulseAccum = 0
-                end
-            else
-                if wasMounted then
-                    wasMounted = false
-                    M.AutoWheelieMounted = false
-                    M.AutoWheelieAllow0 = false
-                    M.AutoWheeliePulse = 0
-                    M.AutoWheelieThrottle = 0
-                    M.AutoWheelieBrake = 0
-                    M.AutoWheelieLastT = nil
-                    M.AutoWheelieLastB = nil
-                    cachedScooter = nil
-                    cachedBody = nil
-                    cachedBodyName = nil
-                end
-            end
-        end
-    end)
-    MystrixHub.TasksController.Insert(M.AutoWheelieLoop)
-end
-
-function MystrixHub.Functions.StopAutoWheelie()
-    local M = MystrixHub.MainController
-    M.AutoWheelie = false
-    M.AutoWheelieAllow0 = false
-    M.AutoWheeliePulse = 0
-    M.AutoWheelieMounted = false
-    if M.AutoWheelieLoop then task.cancel(M.AutoWheelieLoop) M.AutoWheelieLoop = nil end
-    if M.AutoWheelieRender then M.AutoWheelieRender:Disconnect() M.AutoWheelieRender = nil end
-    if M.AutoWheelieConn then M.AutoWheelieConn:Disconnect() M.AutoWheelieConn = nil end
-    pcall(function()
-        local RS = game:GetService("ReplicatedStorage")
-        local SR = RS:FindFirstChild("ScooterRemotes")
-        local SI = SR and SR:FindFirstChild("ScooterInput")
-        if SI then
-            SI:FireServer({ throttle = 0, brake = 0, steer = 0, wheelie = 0, stamp = os.clock() })
-        end
-    end)
-    pcall(function() LocalPlayer:SetAttribute("ScooterLocalWheelie", 0) end)
-end
-
-function MystrixHub.SpeedBoostController.OverrideHover(body, mult)
-    local hover = body:FindFirstChild("HoverBP")
-    if hover and hover:IsA("AlignPosition") then
-        hover.MaxVelocity = 124.80 * mult * 2
-    end
-end
-
-function MystrixHub.SpeedBoostController.Install()
-    local C = MystrixHub.SpeedBoostController
-    if C.HookInstalled then return true end
-    C.HookInstalled = true
-
-    C.Connection = RunService.PreSimulation:Connect(function(dt)
-        if C.Multiplier <= 1 then return end
-
-        local char = LocalPlayer.Character
-        if not char then return end
-        local hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then return end
-        local weld = hrp:FindFirstChild("ScooterMountWeld")
-        if not weld or not weld.Part0 then return end
-
-        local scooter = weld.Part0:FindFirstAncestorOfClass("Model")
-        if not scooter then return end
-
-        local body = scooter:FindFirstChild(scooter:GetAttribute("DriveRootName") or "Body")
-        if not body then return end
-
-        local speed = math.abs(tonumber(LocalPlayer:GetAttribute("ScooterPredictedSpeed")) or 0)
-        if speed < 3 then return end
-
-        MystrixHub.SpeedBoostController.OverrideHover(body, C.Multiplier)
-
-        local drive = body:FindFirstChild("DriveVelocity")
-        if drive and drive.Velocity.Magnitude > 0.1 then
-            drive.Velocity = drive.Velocity * C.Multiplier
-        end
-
-        local look = body.CFrame.LookVector
-        local flat = Vector3.new(look.X, 0, look.Z)
-        if flat.Magnitude > 0.01 then
-            flat = flat.Unit
-            local extraStuds = speed * 1.56 * (C.Multiplier - 1) * dt
-            body.CFrame = body.CFrame + flat * extraStuds
-        end
-    end)
-
-    MystrixHub.ConnectionController.Insert(C.Connection)
-    return true
-end
-
-function MystrixHub.SpeedBoostController.Stop()
-    local C = MystrixHub.SpeedBoostController
-    if C.Connection then C.Connection:Disconnect() C.Connection = nil end
-    C.HookInstalled = false
-end
-
-function MystrixHub.Functions.SetSpeedMultiplier(mult)
-    local C = MystrixHub.SpeedBoostController
-    C.Multiplier = tonumber(mult) or 1
-    C.Enabled = C.Multiplier > 1
-    if C.Enabled then
-        MystrixHub.SpeedBoostController.Install()
-    else
-        MystrixHub.SpeedBoostController.Stop()
-    end
-end
-
-function MystrixHub.Functions.SetSpeedMultiplier(mult)
-    local C = MystrixHub.SpeedBoostController
-    C.Multiplier = tonumber(mult) or 1
-    C.Enabled = C.Multiplier > 1
-    if C.Enabled then
-        MystrixHub.SpeedBoostController.Install()
-    else
-        MystrixHub.SpeedBoostController.Stop()
-    end
-    C.Log(string.format("multiplier = %.1f", C.Multiplier))
-end
-
-function MystrixHub.AutoFarmController.GetBestOwnedScooter()
-    local owned = LocalPlayer:FindFirstChild("OwnedScooters")
-    if not owned then return nil end
-    local RS = game:GetService("ReplicatedStorage")
-    local scooters = RS:FindFirstChild("Scooters")
-    if not scooters then return nil end
-    local best, bestSpeed = nil, -1
-    for _, child in ipairs(owned:GetChildren()) do
-        if child:IsA("BoolValue") and child.Value == true then
-            local template = scooters:FindFirstChild(child.Name)
-            if template then
-                local speed = tonumber(template:GetAttribute("TopSpeedKmh")) or 0
-                if speed > bestSpeed then
-                    bestSpeed = speed
-                    best = child.Name
-                end
-            end
-        end
-    end
-    return best
-end
-
-function MystrixHub.AutoFarmController.FindSpawnedScooter()
-    for _, child in ipairs(workspace:GetDescendants()) do
-        if child:IsA("Model") then
-            local owner = child:FindFirstChild("ScooterOwner")
-            if owner and owner:IsA("ObjectValue") and owner.Value == LocalPlayer then
-                return child
-            end
-            if child:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
-                return child
-            end
-        end
-    end
-    return nil
-end
-
-function MystrixHub.AutoFarmController.DestroyLocalScooter()
-    for _, obj in ipairs(workspace:GetDescendants()) do
-        if obj:IsA("Model") then
-            local owner = obj:FindFirstChild("ScooterOwner")
-            if owner and owner:IsA("ObjectValue") and owner.Value == LocalPlayer then
-                pcall(function() obj:Destroy() end)
-            elseif obj:GetAttribute("OwnerUserId") == LocalPlayer.UserId then
-                pcall(function() obj:Destroy() end)
-            end
-        end
-    end
-end
-
-function MystrixHub.AutoFarmController.FindMountPrompt(scooter)
-    if not scooter then return nil end
-    for _, desc in ipairs(scooter:GetDescendants()) do
-        if desc:IsA("ProximityPrompt") then
-            local n = desc.Name:lower()
-            if n:find("mount") then
-                pcall(function()
-                    desc.Enabled = true
-                    desc.HoldDuration = 0
-                    desc.MaxActivationDistance = math.huge
-                    desc.RequiresLineOfSight = false
-                end)
-                return desc
-            end
-        end
-    end
-    for _, desc in ipairs(scooter:GetDescendants()) do
-        if desc:IsA("ProximityPrompt") then
-            pcall(function()
-                desc.Enabled = true
-                desc.HoldDuration = 0
-                desc.MaxActivationDistance = math.huge
-                desc.RequiresLineOfSight = false
-            end)
-            return desc
-        end
-    end
-    return nil
-end
-
-function MystrixHub.AutoFarmController.GetScooterFinalTopSpeed(scooterName)
-    local RS = game:GetService("ReplicatedStorage")
-    local Scooters = RS:FindFirstChild("Scooters")
-    if not Scooters then return 50 end
-    local template = Scooters:FindFirstChild(scooterName)
-    if not template then return 50 end
-
-    local base  = tonumber(template:GetAttribute("TopSpeedKmh")) or 50
-    local watts = tonumber(template:GetAttribute("MotorWatts")) or 0
-    local key   = "ScooterCustom_" .. scooterName:gsub("[^%w]", "_")
-    local raw   = LocalPlayer:GetAttribute(key)
-    local upgrades = {}
-
-    if type(raw) == "string" and raw ~= "" then
-        local ok, parsed = pcall(function() return HttpService:JSONDecode(raw) end)
-        if ok and type(parsed) == "table" and type(parsed.u) == "table" then
-            upgrades = parsed.u
-        end
-    end
-
-    local top = base
-    if upgrades.VescController == true then top = top + 5 end
-    if upgrades.WeightReduction == true then top = top + 3 end
-    if upgrades.DualMotor == true and template:GetAttribute("DualMotor") ~= true then
-        top = top + math.floor(base * 0.15 + 0.5)
-    end
-    if upgrades.BatteryUpgrade == true and watts > 0 then
-        local r = (watts + 1000) / watts
-        top = top + math.min(8, math.floor(base * (r ^ (1 / 3) - 1) + 0.5))
-    end
-    if upgrades.BatteryUpgradeXL == true then top = top + 5 end
-
-    return top
-end
-
-function MystrixHub.Functions.StartAutoFarm()
-    local C = MystrixHub.AutoFarmController
-    if C.Enabled then return end
-
-    local char = LocalPlayer.Character
-    if not char then return end
-    local hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then return end
-
-    local best = MystrixHub.AutoFarmController.GetBestOwnedScooter()
-    if not best then
-        WindUI:Notify({ Title = "Auto Farm", Content = "No scooters owned.", Duration = 3, Icon = "alert-circle" })
-        return
-    end
-
-    C.FinalTopSpeed     = MystrixHub.AutoFarmController.GetScooterFinalTopSpeed(best)
-    C.CurrentSteerValue = nil
-    C.TeleportPos       = Vector3.new(3086, 4, -2683)
-
-    local RS = game:GetService("ReplicatedStorage")
-    local SR = RS:FindFirstChild("ScooterRemotes")
-    local SpawnScooter = SR and SR:FindFirstChild("SpawnScooter")
-    local ScooterInput = SR and SR:FindFirstChild("ScooterInput")
-    if not SpawnScooter then return end
-
-    C.Enabled        = true
-    C.BestScooter    = best
-    C.SteerDirection = 1
-
-    if hrp:FindFirstChild("ScooterMountWeld") and ScooterInput then
-        ScooterInput:FireServer({ throttle = 0, brake = 0, steer = 0, wheelie = 0, dismount = true, stamp = os.clock() })
-        task.wait(1.2)
-        hrp = char:FindFirstChild("HumanoidRootPart")
-        if not hrp then C.Enabled = false return end
-    end
-
-    MystrixHub.AutoFarmController.DestroyLocalScooter()
-    task.wait(0.3)
-
-    local targetDir = Vector3.new(0, 0, -1)
-
-    SpawnScooter:FireServer(best)
-
-    local scooter = nil
-    local t0 = os.clock()
-    while os.clock() - t0 < 15 do
-        scooter = MystrixHub.AutoFarmController.FindSpawnedScooter()
-        if scooter then break end
-        task.wait(0.2)
-    end
-
-    if not scooter then
-        C.Enabled = false
-        WindUI:Notify({ Title = "Auto Farm", Content = "Scooter never appeared.", Duration = 4, Icon = "alert-circle" })
-        return
-    end
-    C.Scooter = scooter
-    task.wait(0.3)
-
-    hrp = char:FindFirstChild("HumanoidRootPart")
-    if not hrp then C.Enabled = false return end
-
-    local scooterPos = scooter:GetPivot().Position
-    local targetPos = scooterPos + Vector3.new(0, 4, 0)
-    pcall(function()
-        hrp.CFrame = CFrame.new(targetPos, targetPos + targetDir)
-        hrp.AssemblyLinearVelocity  = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end)
-    task.wait(0.5)
-
-    local prompt = MystrixHub.AutoFarmController.FindMountPrompt(scooter)
-    if not prompt then
-        C.Enabled = false
-        WindUI:Notify({ Title = "Auto Farm", Content = "No mount prompt.", Duration = 4, Icon = "alert-circle" })
-        return
-    end
-
-    local mountTimeout = os.clock() + 12
-    while os.clock() < mountTimeout do
-        pcall(fireproximityprompt, prompt)
-        task.wait(0.5)
-        if hrp:FindFirstChild("ScooterMountWeld") then break end
-    end
-
-    if not hrp:FindFirstChild("ScooterMountWeld") then
-        C.Enabled = false
-        WindUI:Notify({ Title = "Auto Farm", Content = "Failed to mount.", Duration = 4, Icon = "alert-circle" })
-        return
-    end
-
-    task.wait(0.4)
-
-    local body = scooter:FindFirstChild(scooter:GetAttribute("DriveRootName") or "Body")
-    C.Body = body
-
-    local bp = C.TeleportPos
-    local hp = C.TeleportPos + Vector3.new(0, 3, 0)
-    pcall(function()
-        if body then
-            body.CFrame = CFrame.lookAt(bp, bp + targetDir)
-            body.AssemblyLinearVelocity  = Vector3.zero
-            body.AssemblyAngularVelocity = Vector3.zero
-        end
-        hrp.CFrame = CFrame.lookAt(hp, hp + targetDir)
-        hrp.AssemblyLinearVelocity  = Vector3.zero
-        hrp.AssemblyAngularVelocity = Vector3.zero
-    end)
-    task.wait(0.4)
-
-    C.WasWheelieOn = MystrixHub.MainController.AutoWheelie
-    if not C.WasWheelieOn then
-        MystrixHub.Functions.StartAutoWheelie()
-    end
-
-    local hum = char:FindFirstChildOfClass("Humanoid")
-    if hum then
-        C.SavedJumpPower  = hum.JumpPower
-        C.SavedJumpHeight = hum.JumpHeight
-        pcall(function() hum.JumpPower = 0 hum.JumpHeight = 0 end)
-    end
-
-    local ORBIT_CENTER = C.TeleportPos
-    local ORBIT_RADIUS = 4
-    local ORBIT_DIR    = 1
-
-    C.CurrentSteerValue = 0
-
-    C.SteerLoop = task.spawn(function()
-        local RS2 = game:GetService("ReplicatedStorage")
-        local SR2 = RS2:WaitForChild("ScooterRemotes")
-        local SI  = SR2:WaitForChild("ScooterInput")
-        local HB  = RunService.Heartbeat
-
-        local cachedScooter, cachedBody, cachedBodyName
-
-        while C.Enabled do
-            HB:Wait()
-
-            local ch = LocalPlayer.Character
-            local h  = ch and ch:FindFirstChild("HumanoidRootPart")
-            local w  = h and h:FindFirstChild("ScooterMountWeld")
-            local sc = w and w.Part0 and w.Part0:FindFirstAncestorOfClass("Model")
-
-            if sc then
-                if sc ~= cachedScooter then
-                    cachedScooter = sc
-                    cachedBodyName = sc:GetAttribute("DriveRootName") or "Body"
-                    cachedBody = sc:FindFirstChild(cachedBodyName)
-                end
-
-                local bd = cachedBody
-                if bd and bd.Parent then
-                    local vel = bd.AssemblyLinearVelocity
-                    local speed = Vector3.new(vel.X, 0, vel.Z).Magnitude / 1.56
-                    local top = tonumber(sc:GetAttribute("TopSpeedKmh")) or C.FinalTopSpeed or 60
-                    if top < 1 then top = 1 end
-                    local speedFrac = math.clamp(speed / top, 0, 1)
-
-                    local look = bd.CFrame.LookVector
-                    local forward = Vector3.new(look.X, 0, look.Z)
-                    if forward.Magnitude < 0.01 then
-                        forward = Vector3.new(0, 0, -1)
-                    else
-                        forward = forward.Unit
-                    end
-
-                    local pos = bd.Position
-                    local toScooter = Vector3.new(pos.X - ORBIT_CENTER.X, 0, pos.Z - ORBIT_CENTER.Z)
-                    local dist = toScooter.Magnitude
-
-                    local steerValue = 0
-
-                    if dist > 1 then
-                        local radial = toScooter / dist
-                        local tangent = Vector3.new(-radial.Z, 0, radial.X) * ORBIT_DIR
-
-                        local radialErr = dist - ORBIT_RADIUS
-                        local correction = math.clamp(-radialErr * 0.24, -0.90, 0.90)
-
-                        local desired = tangent + radial * correction
-                        if desired.Magnitude > 0.01 then
-                            desired = desired.Unit
-                            local cross = forward:Cross(desired)
-                            local dot = forward:Dot(desired)
-                            local angle = math.atan2(cross.Y, dot)
-                            steerValue = -math.clamp(angle * 2.8, -1, 1)
-                        end
-                    end
-
-                    local absSteer = math.abs(steerValue)
-                    local maxSteer = 0.95 - speedFrac * 0.35
-
-                    local pitch = math.abs(math.deg(math.asin(math.clamp(look.Y, -1, 1))))
-                    if pitch > 22 then
-                        local over = math.clamp((pitch - 22) / 40, 0, 1)
-                        maxSteer = maxSteer * (1 - over * 0.5)
-                    end
-
-                    local right = bd.CFrame.RightVector
-                    local roll = math.abs(math.deg(math.asin(math.clamp(right.Y, -1, 1))))
-                    if roll > 25 then
-                        local over = math.clamp((roll - 25) / 25, 0, 1)
-                        maxSteer = maxSteer * (1 - over)
-                    end
-
-                    maxSteer = math.clamp(maxSteer, 0.10, 0.95)
-                    if absSteer > maxSteer then
-                        steerValue = math.sign(steerValue) * maxSteer
-                    end
-
-                    C.CurrentSteerValue = steerValue
-
-                    LocalPlayer:SetAttribute("ScooterLocalSteer",    steerValue)
-                    LocalPlayer:SetAttribute("ScooterLocalThrottle", 1)
-                    LocalPlayer:SetAttribute("ScooterLocalBrake",    0)
-                    LocalPlayer:SetAttribute("ScooterLocalWheelie",  1)
-
-                    SI:FireServer({
-                        throttle = 1,
-                        brake    = 0,
-                        steer    = steerValue,
-                        wheelie  = 1,
-                        dismount = false,
-                        stamp    = os.clock()
-                    })
-                end
-            else
-                cachedScooter = nil
-                cachedBody = nil
-                cachedBodyName = nil
-            end
-        end
-    end)
-    MystrixHub.TasksController.Insert(C.SteerLoop)
-
-    C.RemountLoop = task.spawn(function()
-        local lastSeenMounted = true
-        local remounting = false
-
-        while C.Enabled do
-            task.wait(0.5)
-
-            local ch = LocalPlayer.Character
-            local h  = ch and ch:FindFirstChild("HumanoidRootPart")
-
-            if not h then
-                lastSeenMounted = false
-            else
-                local welded = h:FindFirstChild("ScooterMountWeld") ~= nil
-
-                if welded then
-                    if not lastSeenMounted then
-                        remounting = false
-                        task.wait(0.4)
-                        local w = h:FindFirstChild("ScooterMountWeld")
-                        local sc2 = w and w.Part0 and w.Part0:FindFirstAncestorOfClass("Model")
-                        local bd2 = sc2 and sc2:FindFirstChild(sc2:GetAttribute("DriveRootName") or "Body")
-                        local bp2 = C.TeleportPos
-                        local hp2 = C.TeleportPos + Vector3.new(0, 3, 0)
-                        pcall(function()
-                            if bd2 then
-                                bd2.CFrame = CFrame.lookAt(bp2, bp2 + Vector3.new(0, 0, -1))
-                                bd2.AssemblyLinearVelocity  = Vector3.zero
-                                bd2.AssemblyAngularVelocity = Vector3.zero
-                            end
-                            h.CFrame = CFrame.lookAt(hp2, hp2 + Vector3.new(0, 0, -1))
-                            h.AssemblyLinearVelocity  = Vector3.zero
-                            h.AssemblyAngularVelocity = Vector3.zero
-                        end)
-                        if sc2 then C.Scooter = sc2 end
-                        if bd2 then C.Body = bd2 end
-                    end
-                    lastSeenMounted = true
-                else
-                    lastSeenMounted = false
-
-                    if not remounting and C.Enabled then
-                        remounting = true
-
-                        local sc = MystrixHub.AutoFarmController.FindSpawnedScooter()
-                        if not sc then
-                            pcall(function() SpawnScooter:FireServer(best) end)
-                            local t1 = os.clock()
-                            while os.clock() - t1 < 6 do
-                                task.wait(0.2)
-                                sc = MystrixHub.AutoFarmController.FindSpawnedScooter()
-                                if sc then break end
-                            end
-                        end
-
-                        if sc and C.Enabled then
-                            local sp = sc:GetPivot().Position
-                            local tp = sp + Vector3.new(0, 4, 0)
-                            pcall(function()
-                                h.CFrame = CFrame.new(tp, tp + Vector3.new(0, 0, -1))
-                                h.AssemblyLinearVelocity  = Vector3.zero
-                                h.AssemblyAngularVelocity = Vector3.zero
-                            end)
-                            task.wait(0.35)
-
-                            local p2 = MystrixHub.AutoFarmController.FindMountPrompt(sc)
-                            if p2 then
-                                local to = os.clock() + 6
-                                while os.clock() < to do
-                                    pcall(fireproximityprompt, p2)
-                                    task.wait(0.3)
-                                    local h2 = LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart")
-                                    if h2 and h2:FindFirstChild("ScooterMountWeld") then break end
-                                end
-                            end
-                        end
-
-                        remounting = false
-                    end
-                end
-            end
-        end
-    end)
-    MystrixHub.TasksController.Insert(C.RemountLoop)
-
-    WindUI:Notify({ Title = "Auto Farm", Content = "Circling on " .. best .. " (top " .. C.FinalTopSpeed .. " km/h)", Duration = 3, Icon = "check-circle" })
-end
-
-function MystrixHub.Functions.StopAutoFarm()
-    local C = MystrixHub.AutoFarmController
-    if not C.Enabled then return end
-    C.Enabled = false
-    C.CurrentSteerValue = nil
-
-    if C.SteerLoop then
-        task.cancel(C.SteerLoop)
-        C.SteerLoop = nil
-    end
-
-    if C.RemountLoop then
-        task.cancel(C.RemountLoop)
-        C.RemountLoop = nil
-    end
-
-    if C.SavedJumpPower ~= nil then
-        local char = LocalPlayer.Character
-        local hum = char and char:FindFirstChildOfClass("Humanoid")
-        if hum then
-            pcall(function()
-                hum.JumpPower  = C.SavedJumpPower
-                hum.JumpHeight = C.SavedJumpHeight
-            end)
-        end
-        C.SavedJumpPower  = nil
-        C.SavedJumpHeight = nil
-    end
-
-    if not C.WasWheelieOn then
-        pcall(MystrixHub.Functions.StopAutoWheelie)
-    end
-
-    pcall(function()
-        local RS = game:GetService("ReplicatedStorage")
-        local SR = RS:FindFirstChild("ScooterRemotes")
-        local SI = SR and SR:FindFirstChild("ScooterInput")
-        if SI then
-            SI:FireServer({ throttle = 0, brake = 0, steer = 0, wheelie = 0, dismount = true, stamp = os.clock() })
-        end
-    end)
-
-    task.wait(0.5)
-
-    pcall(MystrixHub.AutoFarmController.DestroyLocalScooter)
-
-    C.Scooter = nil
-    C.Body    = nil
-
-    task.wait(0.2)
-
-    local char = LocalPlayer.Character
-    if char then
-        local hum = char:FindFirstChildOfClass("Humanoid")
-        if hum then hum.Health = 0 end
-    end
-
-    WindUI:Notify({ Title = "Auto Farm", Content = "Stopped", Duration = 2, Icon = "info" })
-end
-
-LocalPlayer.CharacterAdded:Connect(function()
-    if MystrixHub.AutoFarmController.Enabled then
-        MystrixHub.Functions.StopAutoFarm()
-    end
-end)
-
-function MystrixHub.QuestAutoClaimController.GetQuestList()
-    local pg = LocalPlayer:FindFirstChild("PlayerGui")
-    if not pg then return nil end
-    local menu = pg:FindFirstChild("QuestMenu")
-    if not menu then return nil end
-    local main = menu:FindFirstChild("Main")
-    if not main then return nil end
-    local quests = main:FindFirstChild("Quests")
-    if not quests then return nil end
-    return quests:FindFirstChild("List")
-end
-
-function MystrixHub.QuestAutoClaimController.ClaimEligible()
-    local list = MystrixHub.QuestAutoClaimController.GetQuestList()
-    if not list then return end
-
-    local RS = game:GetService("ReplicatedStorage")
-    local SR = RS:FindFirstChild("ScooterRemotes")
-    local QuestRemote = SR and SR:FindFirstChild("QuestRemote")
-    if not QuestRemote then return end
-
-    for _, card in ipairs(list:GetChildren()) do
-        if card:IsA("GuiObject") then
-            local id  = card:GetAttribute("QuestId")
-            local cat = card:GetAttribute("Category")
-            local progress = tonumber(card:GetAttribute("Progress")) or 0
-            local goal = tonumber(card:GetAttribute("Goal")) or math.huge
-            local claimed = card:GetAttribute("Claimed") == true
-            if id and cat and not claimed and progress >= goal then
-                pcall(function()
-                    QuestRemote:FireServer("Claim", cat, id)
-                end)
-            end
-        end
-    end
-end
-
-function MystrixHub.QuestAutoClaimController.Start()
-    local C = MystrixHub.QuestAutoClaimController
-    if C.Enabled then return end
-    C.Enabled = true
-    C.LastRefreshAt = 0
-
-    local RS = game:GetService("ReplicatedStorage")
-    local SR = RS:FindFirstChild("ScooterRemotes")
-    local QuestRemote = SR and SR:FindFirstChild("QuestRemote")
-
-    C.Loop = task.spawn(function()
-        while C.Enabled do
-            pcall(MystrixHub.QuestAutoClaimController.ClaimEligible)
-            task.wait(C.ScanInterval)
-        end
-    end)
-    MystrixHub.TasksController.Insert(C.Loop)
-
-    if QuestRemote then
-        C.RefreshLoop = task.spawn(function()
-            while C.Enabled do
-                pcall(function() QuestRemote:FireServer("GetData") end)
-                C.LastRefreshAt = os.clock()
-                task.wait(C.RefreshInterval)
-            end
-        end)
-        MystrixHub.TasksController.Insert(C.RefreshLoop)
-    end
-end
-
-function MystrixHub.QuestAutoClaimController.Stop()
-    local C = MystrixHub.QuestAutoClaimController
-    C.Enabled = false
-    if C.Loop then task.cancel(C.Loop) C.Loop = nil end
-    if C.RefreshLoop then task.cancel(C.RefreshLoop) C.RefreshLoop = nil end
 end
 
 function MystrixHub.Functions.ApplyTransparency()
@@ -1723,6 +771,1713 @@ function MystrixHub.Functions.SyncDropdownsToState()
     end
 end
 
+MystrixHub.InstantKillController = {
+    Enabled = false,
+    _hooked = false,
+    _orig   = {},
+}
+
+MystrixHub.GodModeController = {
+    Enabled = false,
+    _hooked = false,
+    _orig   = {},
+}
+
+function MystrixHub.Functions.StartInstantKill()
+    local C = MystrixHub.InstantKillController
+    if C._hooked then
+        C.Enabled = true
+        return
+    end
+    if type(hookfunction) ~= "function" then
+        WindUI:Notify({ Title = "Instant Kill", Content = "Executor does not support hookfunction.", Duration = 4, Icon = "alert-circle" })
+        return
+    end
+    local ok, HPCTRL = pcall(function() return require(game:GetService("ReplicatedStorage").CTRL.HPCTRL) end)
+    if not ok or type(HPCTRL) ~= "table" or type(HPCTRL.DamageOnce) ~= "function" then
+        WindUI:Notify({ Title = "Instant Kill", Content = "Failed to load HPCTRL module.", Duration = 4, Icon = "alert-circle" })
+        return
+    end
+    C._orig.DamageOnce = hookfunction(HPCTRL.DamageOnce, function(target, dmg, ...)
+        if C.Enabled and target and target.PrimaryPart and target.PrimaryPart:HasTag("Enemy") then
+            dmg = 1e300
+        end
+        return C._orig.DamageOnce(target, dmg, ...)
+    end)
+    C._hooked = true
+    C.Enabled = true
+end
+
+function MystrixHub.Functions.StopInstantKill()
+    MystrixHub.InstantKillController.Enabled = false
+end
+
+function MystrixHub.Functions.StartGodMode()
+    local C = MystrixHub.GodModeController
+    if C._hooked then
+        C.Enabled = true
+        return
+    end
+    if type(hookfunction) ~= "function" then
+        WindUI:Notify({ Title = "God Mode", Content = "Executor does not support hookfunction.", Duration = 4, Icon = "alert-circle" })
+        return
+    end
+    local ok, Calc = pcall(function() return require(game:GetService("ReplicatedStorage").Utils.CalculateUtils) end)
+    if not ok or type(Calc) ~= "table" or type(Calc.CCEnemyDamage) ~= "function" then
+        WindUI:Notify({ Title = "God Mode", Content = "Failed to load CalculateUtils module.", Duration = 4, Icon = "alert-circle" })
+        return
+    end
+    C._orig.CCEnemyDamage = hookfunction(Calc.CCEnemyDamage, function(...)
+        if C.Enabled then return 0 end
+        return C._orig.CCEnemyDamage(...)
+    end)
+    C._hooked = true
+    C.Enabled = true
+end
+
+function MystrixHub.Functions.StopGodMode()
+    MystrixHub.GodModeController.Enabled = false
+end
+
+MystrixHub.ForgeSkipController = {
+    Enabled = false,
+    _hooked = false,
+    _orig   = {},
+}
+
+function MystrixHub.Functions.StartForgeSkip()
+    local C = MystrixHub.ForgeSkipController
+    if C._hooked then
+        C.Enabled = true
+        return
+    end
+    local ok, Moon2 = pcall(function() return require(game:GetService("ReplicatedStorage").Tool.Moon2Cutscene) end)
+    if not ok or type(Moon2) ~= "table" then
+        WindUI:Notify({ Title = "Skip Forge", Content = "Failed to load Moon2Cutscene module.", Duration = 4, Icon = "alert-circle" })
+        return
+    end
+    if type(Moon2.play) == "function" then
+        C._orig.play = Moon2.play
+        Moon2.play = function(self, ...)
+            if C.Enabled then
+                pcall(function()
+                    self.timeElapsed = 850
+                    if type(self.setFrame) == "function" then
+                        self:setFrame(850)
+                    end
+                    self.isPlaying = false
+                end)
+                return
+            end
+            return C._orig.play(self, ...)
+        end
+    end
+    if type(Moon2.wait) == "function" then
+        C._orig.wait = Moon2.wait
+        Moon2.wait = function(self, ...)
+            if C.Enabled then return end
+            return C._orig.wait(self, ...)
+        end
+    end
+    C._hooked = true
+    C.Enabled = true
+end
+
+function MystrixHub.Functions.StopForgeSkip()
+    MystrixHub.ForgeSkipController.Enabled = false
+end
+
+MystrixHub.FrostTowerController = {
+    Enabled            = false,
+    Running            = false,
+    Loop               = nil,
+    AllMode            = true,
+    WantedWaves        = {},
+    LastCompletedWave  = 0,
+    CurrentWave        = 0,
+    _hooked            = false,
+    _origComplete      = nil,
+    _forcedIKPrev      = false,
+    _forcedGMPrev      = false,
+    _attackLoop        = nil,
+    _teleportLoop      = nil,
+}
+
+MystrixHub.FrostTowerController._currentTickets  = nil
+MystrixHub.FrostTowerController._ticketParagraph = nil
+MystrixHub.FrostTowerController._ticketLoop      = nil
+
+function MystrixHub.FrostTowerController.GetTicketCount()
+    local ok, label = pcall(function()
+        return game:GetService("Players").LocalPlayer.PlayerGui.Main.Dungeon.zheng.wuqi.Info.Icon.Info.Ticket.Val
+    end)
+    if ok and label and label:IsA("TextLabel") then
+        local num = tostring(label.Text):match("(%d+)")
+        if num then return tonumber(num) end
+    end
+    return nil
+end
+
+function MystrixHub.FrostTowerController.StartTicketWatcher(paragraph)
+    local C = MystrixHub.FrostTowerController
+    C._ticketParagraph = paragraph
+    if C._ticketLoop then return end
+    C._ticketLoop = task.spawn(function()
+        while true do
+            local count = C.GetTicketCount()
+            C._currentTickets = count
+            local text
+            if count == nil then
+                text = "Tower Tickets: --"
+            elseif count <= 0 then
+                text = "Tower Tickets: 0 (out of tickets — auto farm disabled)"
+            else
+                text = "Tower Tickets: " .. tostring(count)
+            end
+            pcall(function()
+                if C._ticketParagraph then
+                    C._ticketParagraph:SetDesc(text)
+                end
+            end)
+            task.wait(0.5)
+        end
+    end)
+end
+
+function MystrixHub.FrostTowerController.GetDungeonData()
+    local ok, mod = pcall(function() return require(game:GetService("ReplicatedStorage").LocalData.DungeonData) end)
+    if ok and type(mod) == "table" then return mod end
+    return nil
+end
+
+function MystrixHub.FrostTowerController.GetMaxWave()
+    local ok, helper = pcall(function() return require(game:GetService("ReplicatedStorage").Config.Dungeon.Helper) end)
+    if not ok or type(helper) ~= "table" then return 30 end
+    local ok2, cfg = pcall(function() return helper.GetConfig() end)
+    if not ok2 or type(cfg) ~= "table" then return 30 end
+    return #cfg
+end
+
+function MystrixHub.FrostTowerController.GetNearestEnemy()
+    local LocalPlayer = game.Players.LocalPlayer
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+
+    local EnemyFolder = workspace:FindFirstChild("EnemyFolder")
+    if not EnemyFolder then return nil end
+
+    local nearest, nearestDist = nil, math.huge
+    for _, enemy in ipairs(EnemyFolder:GetChildren()) do
+        if enemy:IsA("Model") and not enemy:GetAttribute("Dead") then
+            local ep = enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart")
+            if ep then
+                local d = (ep.Position - hrp.Position).Magnitude
+                if d < nearestDist then
+                    nearestDist = d
+                    nearest = enemy
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+function MystrixHub.FrostTowerController.StartTeleportLoop()
+    local C = MystrixHub.FrostTowerController
+    if C._teleportLoop then return end
+    C._teleportLoop = task.spawn(function()
+        while C.Running do
+            local enemy = C.GetNearestEnemy()
+            if enemy then
+                local LocalPlayer = game.Players.LocalPlayer
+                local char = LocalPlayer.Character
+                if char then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    local ep  = enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart")
+                    if hrp and ep then
+                        local offset = hrp.Position - ep.Position
+                        if offset.Magnitude < 0.1 then offset = Vector3.new(0, 0, 1) end
+                        local target = ep.Position + offset.Unit * 4
+                        pcall(function()
+                            hrp.CFrame = CFrame.new(target.X, target.Y, target.Z)
+                            hrp.AssemblyLinearVelocity  = Vector3.zero
+                            hrp.AssemblyAngularVelocity = Vector3.zero
+                        end)
+                    end
+                end
+            end
+            task.wait(0.15)
+        end
+        C._teleportLoop = nil
+    end)
+end
+
+function MystrixHub.FrostTowerController.StartAttackLoop()
+    local C = MystrixHub.FrostTowerController
+    if C._attackLoop then return end
+    local ok, CommUtils = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Utils.CommunicationUtils)
+    end)
+    if not ok then return end
+    local ATKOnceBE = CommUtils.TryGetBindableEvent("Attack", "ATKOnceBE")
+    if not ATKOnceBE then return end
+
+    C._attackLoop = task.spawn(function()
+        while C.Running do
+            pcall(function() ATKOnceBE:Fire() end)
+            task.wait(0.1)
+        end
+        C._attackLoop = nil
+    end)
+end
+
+function MystrixHub.FrostTowerController.ForceIKGMOn()
+    local C = MystrixHub.FrostTowerController
+    C._forcedIKPrev = MystrixHub.InstantKillController.Enabled
+    C._forcedGMPrev = MystrixHub.GodModeController.Enabled
+
+    if not MystrixHub.InstantKillController._hooked then
+        MystrixHub.Functions.StartInstantKill()
+    else
+        MystrixHub.InstantKillController.Enabled = true
+    end
+    if not MystrixHub.GodModeController._hooked then
+        MystrixHub.Functions.StartGodMode()
+    else
+        MystrixHub.GodModeController.Enabled = true
+    end
+end
+
+function MystrixHub.FrostTowerController.RestoreIKGM()
+    local C = MystrixHub.FrostTowerController
+    MystrixHub.InstantKillController.Enabled = C._forcedIKPrev or false
+    MystrixHub.GodModeController.Enabled     = C._forcedGMPrev or false
+end
+
+function MystrixHub.FrostTowerController.InstallHook()
+    local C = MystrixHub.FrostTowerController
+    if C._hooked then return true end
+    local DungeonData = C.GetDungeonData()
+    if not DungeonData or type(DungeonData.CompleteRound) ~= "function" then
+        WindUI:Notify({ Title = "Frost Tower", Content = "Failed to load DungeonData module.", Duration = 4, Icon = "alert-circle" })
+        return false
+    end
+    C._origComplete = DungeonData.CompleteRound
+    DungeonData.CompleteRound = function(round, ...)
+        local a, b = C._origComplete(round, ...)
+        C.LastCompletedWave = tonumber(round) or 0
+        return a, b
+    end
+    C._hooked = true
+    return true
+end
+
+function MystrixHub.FrostTowerController.WaitForWaveEnd()
+    local C = MystrixHub.FrostTowerController
+    local LocalPlayer = game.Players.LocalPlayer
+    local DungeonData = C.GetDungeonData()
+    if not DungeonData then return end
+
+    local currentWave = C.CurrentWave
+    local roundTimer  = tick()
+
+    while C.Running and LocalPlayer:GetAttribute("Dungeoning") do
+        task.wait(0.4)
+
+        if C.LastCompletedWave >= currentWave then
+            local nextWave = currentWave + 1
+            if not C.AllMode and not table.find(C.WantedWaves, nextWave) then
+                task.wait(0.8)
+                pcall(function() DungeonData.ExitDungeon() end)
+                local tx = tick()
+                while LocalPlayer:GetAttribute("Dungeoning") and tick() - tx < 8 do
+                    task.wait(0.3)
+                end
+                return
+            end
+            if C.AllMode and currentWave >= C.GetMaxWave() then
+                pcall(function() DungeonData.ExitDungeon() end)
+                local tx = tick()
+                while LocalPlayer:GetAttribute("Dungeoning") and tick() - tx < 8 do
+                    task.wait(0.3)
+                end
+                return
+            end
+            currentWave = nextWave
+            roundTimer  = tick()
+        end
+
+        if tick() - roundTimer > 60 then
+            pcall(function() DungeonData.ExitDungeon() end)
+            return
+        end
+    end
+end
+
+function MystrixHub.FrostTowerController.RunIteration()
+    local C = MystrixHub.FrostTowerController
+    local LocalPlayer = game.Players.LocalPlayer
+    local DungeonData = C.GetDungeonData()
+    if not DungeonData then return end
+
+    local waves = {}
+    if C.AllMode then
+        table.insert(waves, 1)
+    else
+        for _, r in ipairs(C.WantedWaves) do
+            table.insert(waves, r)
+        end
+        if #waves == 0 then table.insert(waves, 1) end
+    end
+
+    for _, startWave in ipairs(waves) do
+        if not C.Running then return end
+
+        if LocalPlayer:GetAttribute("Dungeoning") then
+            C.WaitForWaveEnd()
+        end
+
+        if not C.Running then return end
+
+        C.LastCompletedWave = 0
+        C.CurrentWave       = startWave
+
+        pcall(function() DungeonData.TryIntoDungeon(startWave) end)
+
+        local t0 = tick()
+        while C.Running and tick() - t0 < 20 do
+            if LocalPlayer:GetAttribute("Dungeoning") then break end
+            task.wait(0.3)
+        end
+
+        if not LocalPlayer:GetAttribute("Dungeoning") then
+            task.wait(2)
+            continue
+        end
+
+        task.wait(1)
+        C.WaitForWaveEnd()
+        task.wait(2)
+    end
+end
+
+function MystrixHub.Functions.StartFrostTowerFarm()
+    local C = MystrixHub.FrostTowerController
+    if C.Running then return end
+
+    local tickets = C.GetTicketCount()
+    C._currentTickets = tickets
+
+    if tickets == nil then
+        WindUI:Notify({
+            Title = "Frost Tower",
+            Content = "Could not read your tower ticket count.",
+            Duration = 4,
+            Icon = "alert-circle",
+        })
+        return
+    end
+
+    if tickets <= 0 then
+        WindUI:Notify({
+            Title = "Frost Tower",
+            Content = "You don't have enough tower tickets.",
+            Duration = 4,
+            Icon = "alert-circle",
+        })
+        return
+    end
+
+    if not C.InstallHook() then return end
+
+    C.Enabled = true
+    C.Running = true
+
+    C.ForceIKGMOn()
+    C.StartTeleportLoop()
+    C.StartAttackLoop()
+
+    C.Loop = task.spawn(function()
+        while C.Running do
+            if (C._currentTickets or 0) <= 0 then
+                WindUI:Notify({
+                    Title = "Frost Tower",
+                    Content = "Out of tower tickets — auto farm stopped.",
+                    Duration = 4,
+                    Icon = "alert-circle",
+                })
+                break
+            end
+            local ok, err = pcall(C.RunIteration)
+            if not ok then
+                warn("[FrostTower] " .. tostring(err))
+                task.wait(2)
+            end
+            task.wait(0.5)
+        end
+        C.Running = false
+        C.Enabled = false
+        C.StopTeleportLoop()
+        C.StopAttackLoop()
+        C.RestoreIKGM()
+    end)
+    MystrixHub.TasksController.Insert(C.Loop)
+end
+
+function MystrixHub.Functions.StopFrostTowerFarm()
+    local C = MystrixHub.FrostTowerController
+    C.Enabled = false
+    C.Running = false
+    if C.Loop then
+        task.cancel(C.Loop)
+        C.Loop = nil
+    end
+    C.RestoreIKGM()
+    pcall(function()
+        if game.Players.LocalPlayer:GetAttribute("Dungeoning") then
+            require(game:GetService("ReplicatedStorage").LocalData.DungeonData).ExitDungeon()
+        end
+    end)
+end
+
+MystrixHub.StageFarmController = {
+    Enabled        = false,
+    Running        = false,
+    Loop           = nil,
+    AllMode        = true,
+    AllOresMode    = true,
+    WantedStages   = {},
+    WantedOres     = {},
+    _forcedIKPrev  = false,
+    _forcedGMPrev  = false,
+    _teleportLoop  = nil,
+    _attackLoop    = nil,
+    _capacity      = 18,
+    _collected     = 0,
+    _savedCF       = nil,
+}
+
+function MystrixHub.StageFarmController.GetStageUtils()
+    local ok, mod = pcall(function()
+        return require(game.Players.LocalPlayer.PlayerScripts.Manager.StageManager.StageUtils)
+    end)
+    return ok and mod or nil
+end
+
+function MystrixHub.StageFarmController.GetTranslateUtils()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Utils.TranslateUtils)
+    end)
+    return ok and mod or nil
+end
+
+function MystrixHub.StageFarmController.GetCommUtils()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Utils.CommunicationUtils)
+    end)
+    return ok and mod or nil
+end
+
+function MystrixHub.StageFarmController.ReadCapacity()
+    local ok, UpgradeData = pcall(function()
+        return require(game:GetService("ReplicatedStorage").LocalData.UpgradeData)
+    end)
+    if ok and type(UpgradeData) == "table" and type(UpgradeData.GetMaxNum) == "function" then
+        local ok2, cap = pcall(UpgradeData.GetMaxNum, "OrePack")
+        if ok2 and type(cap) == "number" and cap > 0 then
+            return cap
+        end
+    end
+    return 18
+end
+
+function MystrixHub.StageFarmController.GetAllStageNames()
+    local names = {}
+    local ok, cfg = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Stage.Helper).GetStageEnemyConfig()
+    end)
+    if ok and type(cfg) == "table" then
+        local keys = {}
+        for k in pairs(cfg) do table.insert(keys, k) end
+        table.sort(keys, function(a, b)
+            return (tonumber(a:match("%d+")) or 0) < (tonumber(b:match("%d+")) or 0)
+        end)
+        return keys
+    end
+    for i = 1, 30 do table.insert(names, "Stage_" .. i) end
+    return names
+end
+
+function MystrixHub.StageFarmController.GetNearestEnemy()
+    local LocalPlayer = game.Players.LocalPlayer
+    local char = LocalPlayer.Character
+    if not char then return nil end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return nil end
+    local folder = workspace:FindFirstChild("EnemyFolder")
+    if not folder then return nil end
+    local nearest, nearestDist = nil, math.huge
+    for _, enemy in ipairs(folder:GetChildren()) do
+        if enemy:IsA("Model") and not enemy:GetAttribute("Dead") then
+            local ep = enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart")
+            if ep then
+                local d = (ep.Position - hrp.Position).Magnitude
+                if d < nearestDist then
+                    nearestDist = d
+                    nearest = enemy
+                end
+            end
+        end
+    end
+    return nearest
+end
+
+function MystrixHub.StageFarmController.ShouldCollectOre(oreName)
+    local C = MystrixHub.StageFarmController
+    if C.AllOresMode then return true end
+    if #C.WantedOres == 0 then return true end
+    for _, id in ipairs(C.WantedOres) do
+        if id == oreName then return true end
+    end
+    return false
+end
+
+function MystrixHub.StageFarmController.StartTeleportLoop()
+    local C = MystrixHub.StageFarmController
+    if C._teleportLoop then return end
+    C._teleportLoop = task.spawn(function()
+        while C.Running do
+            local enemy = C.GetNearestEnemy()
+            if enemy then
+                local char = game.Players.LocalPlayer.Character
+                if char then
+                    local hrp = char:FindFirstChild("HumanoidRootPart")
+                    local ep = enemy.PrimaryPart or enemy:FindFirstChild("HumanoidRootPart")
+                    if hrp and ep then
+                        local offset = hrp.Position - ep.Position
+                        if offset.Magnitude < 0.1 then offset = Vector3.new(0, 0, 1) end
+                        local target = ep.Position + offset.Unit * 4
+                        pcall(function()
+                            hrp.CFrame = CFrame.new(target.X, target.Y, target.Z)
+                            hrp.AssemblyLinearVelocity = Vector3.zero
+                            hrp.AssemblyAngularVelocity = Vector3.zero
+                        end)
+                    end
+                end
+            end
+            task.wait(0.15)
+        end
+        C._teleportLoop = nil
+    end)
+end
+
+function MystrixHub.StageFarmController.StopTeleportLoop()
+    local C = MystrixHub.StageFarmController
+    if C._teleportLoop then
+        task.cancel(C._teleportLoop)
+        C._teleportLoop = nil
+    end
+end
+
+function MystrixHub.StageFarmController.StartAttackLoop()
+    local C = MystrixHub.StageFarmController
+    if C._attackLoop then return end
+    local CommUtils = C.GetCommUtils()
+    if not CommUtils then return end
+    local ATKOnceBE = CommUtils.TryGetBindableEvent("Attack", "ATKOnceBE")
+    if not ATKOnceBE then return end
+    C._attackLoop = task.spawn(function()
+        while C.Running do
+            pcall(function() ATKOnceBE:Fire() end)
+            task.wait(0.1)
+        end
+        C._attackLoop = nil
+    end)
+end
+
+function MystrixHub.StageFarmController.StopAttackLoop()
+    local C = MystrixHub.StageFarmController
+    if C._attackLoop then
+        task.cancel(C._attackLoop)
+        C._attackLoop = nil
+    end
+end
+
+function MystrixHub.StageFarmController.ForceIKGMOn()
+    local C = MystrixHub.StageFarmController
+    C._forcedIKPrev = MystrixHub.InstantKillController.Enabled
+    C._forcedGMPrev = MystrixHub.GodModeController.Enabled
+    if not MystrixHub.InstantKillController._hooked then
+        MystrixHub.Functions.StartInstantKill()
+    else
+        MystrixHub.InstantKillController.Enabled = true
+    end
+    if not MystrixHub.GodModeController._hooked then
+        MystrixHub.Functions.StartGodMode()
+    else
+        MystrixHub.GodModeController.Enabled = true
+    end
+end
+
+function MystrixHub.StageFarmController.RestoreIKGM()
+    local C = MystrixHub.StageFarmController
+    MystrixHub.InstantKillController.Enabled = C._forcedIKPrev or false
+    MystrixHub.GodModeController.Enabled = C._forcedGMPrev or false
+end
+
+function MystrixHub.StageFarmController.WaitForEnemies(timeout)
+    local t0 = tick()
+    while tick() - t0 < (timeout or 15) do
+        local folder = workspace:FindFirstChild("EnemyFolder")
+        if folder then
+            local count = 0
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA("Model") and not child:GetAttribute("Dead") then
+                    count = count + 1
+                end
+            end
+            if count > 0 then return true end
+        end
+        task.wait(0.2)
+    end
+    return false
+end
+
+function MystrixHub.StageFarmController.WaitForAllEnemiesDead(timeout)
+    local C = MystrixHub.StageFarmController
+    local t0 = tick()
+    while tick() - t0 < (timeout or 90) do
+        if not C.Running then return false end
+        local folder = workspace:FindFirstChild("EnemyFolder")
+        local alive = 0
+        if folder then
+            for _, child in ipairs(folder:GetChildren()) do
+                if child:IsA("Model") and not child:GetAttribute("Dead") then
+                    alive = alive + 1
+                end
+            end
+        end
+        if alive == 0 then return true end
+        task.wait(0.3)
+    end
+    return false
+end
+
+function MystrixHub.StageFarmController.WaitForOres(timeout)
+    local t0 = tick()
+    while tick() - t0 < (timeout or 15) do
+        local cache = workspace:FindFirstChild("OreCache")
+        if cache and #cache:GetChildren() > 0 then
+            return true
+        end
+        task.wait(0.2)
+    end
+    return false
+end
+
+function MystrixHub.StageFarmController.GetRemainingOreModels()
+    local C = MystrixHub.StageFarmController
+    local remaining = {}
+    local cache = workspace:FindFirstChild("OreCache")
+    if not cache then return remaining end
+    for _, model in ipairs(cache:GetChildren()) do
+        if model:IsA("Model") and C.ShouldCollectOre(model.Name) then
+            local pp = model.PrimaryPart and model.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
+            if pp and pp.Enabled then
+                table.insert(remaining, model)
+            end
+        end
+    end
+    return remaining
+end
+
+function MystrixHub.StageFarmController.CollectOnePass()
+    local C = MystrixHub.StageFarmController
+    local cache = workspace:FindFirstChild("OreCache")
+    if not cache then return 0, 0 end
+    local fired   = 0
+    local success = 0
+
+    for _, ore in ipairs(cache:GetChildren()) do
+        if not C.Running then break end
+
+        if ore:IsA("Model") and ore.PrimaryPart then
+            if C.ShouldCollectOre(ore.Name) then
+                local pp = ore.PrimaryPart:FindFirstChildOfClass("ProximityPrompt")
+                if pp and pp.Enabled and fireproximityprompt then
+                    fired = fired + 1
+                    pcall(fireproximityprompt, pp)
+                    task.wait(0.08)
+                    if not pp.Enabled or not ore.Parent then
+                        success = success + 1
+                        C._collected = C._collected + 1
+                    end
+                end
+            end
+        end
+    end
+    return fired, success
+end
+
+function MystrixHub.StageFarmController.GetSpawnPart()
+    local candidates = {
+        workspace:FindFirstChild("SpawnLocation"),
+        workspace:FindFirstChild("Spawn"),
+        workspace.WorldModel and workspace.WorldModel:FindFirstChild("Spawn"),
+        workspace.WorldModel and workspace.WorldModel:FindFirstChild("SpawnLocation"),
+        workspace.WorldModel and workspace.WorldModel:FindFirstChild("StageMap") and workspace.WorldModel.StageMap:FindFirstChild("Spawn"),
+        workspace.WorldModel and workspace.WorldModel:FindFirstChild("StageMap") and workspace.WorldModel.StageMap:FindFirstChild("SpawnLocation"),
+    }
+    for _, p in ipairs(candidates) do
+        if p and p:IsA("BasePart") then return p end
+    end
+    return nil
+end
+
+function MystrixHub.StageFarmController.DepositAndReturn()
+    local C = MystrixHub.StageFarmController
+    local LocalPlayer = game.Players.LocalPlayer
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    C._savedCF = hrp.CFrame
+
+    local teleported = false
+
+    local TranslateUtils = C.GetTranslateUtils()
+    if TranslateUtils and type(TranslateUtils.ToSpawn) == "function" then
+        local ok = pcall(function() TranslateUtils.ToSpawn(char) end)
+        if ok then teleported = true end
+    end
+
+    if not teleported then
+        local spawn = C.GetSpawnPart()
+        if spawn then
+            pcall(function()
+                hrp.CFrame = spawn.CFrame + Vector3.new(0, 5, 0)
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end)
+            teleported = true
+        end
+    end
+
+    task.wait(1.2)
+
+    local CommUtils = C.GetCommUtils()
+    if CommUtils then
+        local claimRE = CommUtils.TryGetRemoteEvent("Stage", "ClaimedAllOreRE")
+        if claimRE then
+            pcall(function() claimRE:FireServer() end)
+        end
+    end
+
+    task.wait(3)
+
+    if C._savedCF then
+        pcall(function()
+            hrp.CFrame = C._savedCF
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end)
+        C._savedCF = nil
+    end
+
+    task.wait(0.6)
+end
+
+function MystrixHub.StageFarmController.CollectAndDepositLoop()
+    local C = MystrixHub.StageFarmController
+
+    while C.Running do
+        if C._collected >= C._capacity then
+            C.DepositAndReturn()
+            if not C.Running then return end
+            C._collected = 0
+        end
+
+        local remaining = C.GetRemainingOreModels()
+        if #remaining == 0 then return end
+
+        local fired, success = C.CollectOnePass()
+        task.wait(0.3)
+
+        local stillRemaining = C.GetRemainingOreModels()
+        if #stillRemaining == 0 then return end
+
+        if fired > 0 and success == 0 then
+            C.DepositAndReturn()
+            if not C.Running then return end
+            C._collected = 0
+        elseif C._collected >= C._capacity then
+            C.DepositAndReturn()
+            if not C.Running then return end
+            C._collected = 0
+        else
+            task.wait(0.4)
+        end
+    end
+end
+
+function MystrixHub.StageFarmController.EnterStageFresh(stageName)
+    local C = MystrixHub.StageFarmController
+    local LocalPlayer = game.Players.LocalPlayer
+    local StageUtils = C.GetStageUtils()
+
+    if StageUtils then
+        pcall(function() StageUtils.ExitFight(false, true) end)
+        task.wait(0.4)
+    end
+
+    pcall(function() LocalPlayer:SetAttribute("StageID", nil) end)
+    task.wait(0.15)
+    pcall(function() LocalPlayer:SetAttribute("StageID", stageName) end)
+    task.wait(0.5)
+end
+
+function MystrixHub.StageFarmController.ClearEnemiesOnce()
+    local C = MystrixHub.StageFarmController
+    if not C.WaitForEnemies(20) then return end
+    C.StartTeleportLoop()
+    C.StartAttackLoop()
+    C.WaitForAllEnemiesDead(120)
+    C.StopTeleportLoop()
+    C.StopAttackLoop()
+end
+
+function MystrixHub.StageFarmController.RunIteration()
+    local C = MystrixHub.StageFarmController
+
+    local stages = {}
+    if C.AllMode then
+        stages = C.GetAllStageNames()
+    else
+        for _, s in ipairs(C.WantedStages) do
+            table.insert(stages, s)
+        end
+        if #stages == 0 then
+            stages = C.GetAllStageNames()
+        end
+    end
+
+    local singleStage = (not C.AllMode and #C.WantedStages == 1)
+
+    if singleStage then
+        local stageName = C.WantedStages[1]
+        while C.Running do
+            if C._collected >= C._capacity then
+                C.DepositAndReturn()
+                if not C.Running then return end
+                C._collected = 0
+            end
+
+            C.EnterStageFresh(stageName)
+            C.ClearEnemiesOnce()
+            if not C.Running then return end
+
+            C.WaitForOres(15)
+            task.wait(0.6)
+            C.CollectAndDepositLoop()
+            task.wait(0.4)
+        end
+        return
+    end
+
+    for _, stageName in ipairs(stages) do
+        if not C.Running then return end
+
+        if C._collected >= C._capacity then
+            C.DepositAndReturn()
+            if not C.Running then return end
+            C._collected = 0
+        end
+
+        C.EnterStageFresh(stageName)
+        C.ClearEnemiesOnce()
+        if not C.Running then return end
+
+        C.WaitForOres(15)
+        task.wait(0.6)
+        C.CollectAndDepositLoop()
+        task.wait(0.4)
+    end
+end
+
+function MystrixHub.Functions.StartStageFarm()
+    local C = MystrixHub.StageFarmController
+    if C.Running then return end
+
+    C._capacity = C.ReadCapacity()
+    C._collected = 0
+    C._savedCF = nil
+
+    C.Enabled = true
+    C.Running = true
+    C.ForceIKGMOn()
+
+    C.Loop = task.spawn(function()
+        while C.Running do
+            local ok, err = pcall(C.RunIteration)
+            if not ok then
+                warn("[StageFarm] " .. tostring(err))
+                task.wait(2)
+            end
+            task.wait(0.5)
+        end
+        C.Running = false
+    end)
+    MystrixHub.TasksController.Insert(C.Loop)
+end
+
+function MystrixHub.Functions.StopStageFarm()
+    local C = MystrixHub.StageFarmController
+    C.Enabled = false
+    C.Running = false
+    if C.Loop then
+        task.cancel(C.Loop)
+        C.Loop = nil
+    end
+    C.StopTeleportLoop()
+    C.StopAttackLoop()
+    C.RestoreIKGM()
+
+    local LocalPlayer = game.Players.LocalPlayer
+    local StageUtils = C.GetStageUtils()
+
+    if StageUtils then
+        pcall(function() StageUtils.ExitFight(false, true) end)
+        task.wait(0.3)
+    end
+
+    local char = LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local teleported = false
+
+    local TranslateUtils = C.GetTranslateUtils()
+    if TranslateUtils and type(TranslateUtils.ToSpawn) == "function" then
+        local ok = pcall(function() TranslateUtils.ToSpawn(char) end)
+        if ok then teleported = true end
+    end
+
+    if not teleported then
+        local spawn = C.GetSpawnPart()
+        if spawn then
+            pcall(function()
+                hrp.CFrame = spawn.CFrame + Vector3.new(0, 5, 0)
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end)
+        else
+            pcall(function()
+                hrp.CFrame = CFrame.new(0, 1000, 0)
+                hrp.AssemblyLinearVelocity = Vector3.zero
+                hrp.AssemblyAngularVelocity = Vector3.zero
+            end)
+        end
+    end
+
+    C._savedCF = nil
+    C._collected = 0
+end
+
+MystrixHub.RebirthFarmController = {
+    Enabled  = false,
+    Running  = false,
+    Loop     = nil,
+    Interval = 10,
+    _comm    = nil,
+}
+
+function MystrixHub.RebirthFarmController.GetComm()
+    local C = MystrixHub.RebirthFarmController
+    if C._comm then return C._comm end
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Utils.CommunicationUtils)
+    end)
+    if not ok then return nil end
+    C._comm = mod
+    return mod
+end
+
+function MystrixHub.RebirthFarmController.GetRebirthValue()
+    local ok, val = pcall(function()
+        return game.Players.LocalPlayer:WaitForChild("Eco", 5):WaitForChild("rebirth", 5).Value
+    end)
+    if ok and type(val) == "number" then return val end
+    return nil
+end
+
+function MystrixHub.RebirthFarmController.GetLevelValue()
+    local ok, val = pcall(function()
+        return game.Players.LocalPlayer:WaitForChild("Eco", 5):WaitForChild("level", 5).Value
+    end)
+    if ok and type(val) == "number" then return val end
+    return nil
+end
+
+function MystrixHub.RebirthFarmController.TryRebirth()
+    local C = MystrixHub.RebirthFarmController
+    local CommUtils = C.GetComm()
+    if not CommUtils then return end
+
+    local ok, Helper = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Rebirth.Helper)
+    end)
+    if not ok then return end
+
+    local rebirth = C.GetRebirthValue()
+    if rebirth == nil then return end
+
+    if Helper.CheckIsMax and Helper.CheckIsMax(rebirth) then return end
+
+    local level = C.GetLevelValue()
+    if level == nil then return end
+
+    local needed = nil
+    if Helper.GetNeedLevel then
+        local ok2, r = pcall(Helper.GetNeedLevel, rebirth + 1)
+        if ok2 then needed = r end
+    end
+
+    if needed and level < needed then return end
+
+    local re = CommUtils.TryGetRemoteEvent("Rebirth", "TryRebirthRE")
+    if re then
+        pcall(function() re:FireServer() end)
+    end
+end
+
+function MystrixHub.Functions.StartAutoRebirth()
+    local C = MystrixHub.RebirthFarmController
+    if C.Running then return end
+    C.Enabled = true
+    C.Running = true
+    C.Loop = task.spawn(function()
+        while C.Running do
+            pcall(C.TryRebirth)
+            task.wait(C.Interval)
+        end
+        C.Running = false
+    end)
+    MystrixHub.TasksController.Insert(C.Loop)
+end
+
+function MystrixHub.Functions.StopAutoRebirth()
+    local C = MystrixHub.RebirthFarmController
+    C.Enabled = false
+    C.Running = false
+    if C.Loop then
+        task.cancel(C.Loop)
+        C.Loop = nil
+    end
+end
+
+MystrixHub.OnlineRewardController = {
+    Enabled  = false,
+    Running  = false,
+    Loop     = nil,
+    Interval = 3,
+}
+
+function MystrixHub.OnlineRewardController.TryClaimAll()
+    local ok, OnlineData = pcall(function()
+        return require(game:GetService("ReplicatedStorage").LocalData.OnlineData)
+    end)
+    if not ok then return end
+
+    local ok2, Helper = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Online.Helper)
+    end)
+    if not ok2 then return end
+
+    local data = OnlineData.GetData()
+    if not data or type(data) ~= "table" then return end
+    if type(data.Reward) ~= "table" then return end
+
+    local times = Helper.GetOnlineTimeConfig()
+    if type(times) ~= "table" then return end
+
+    local serverTime = workspace:GetAttribute("ServerTime") or os.time()
+    local startTick  = data.StartTick or os.time()
+    local passTime   = tonumber(data.PassTime) or 0
+    local elapsed    = math.floor(passTime + serverTime - startTick)
+
+    for _, name in ipairs({ "1", "2", "3", "4", "5", "6", "7", "8", "9", "10", "11", "12" }) do
+        local needed = times[name]
+        if needed and not data.Reward[name] and elapsed >= needed then
+            pcall(function() OnlineData.TryClaim(name) end)
+            task.wait(0.8)
+        end
+    end
+end
+
+function MystrixHub.Functions.StartOnlineRewardFarm()
+    local C = MystrixHub.OnlineRewardController
+    if C.Running then return end
+    C.Enabled = true
+    C.Running = true
+    C.Loop = task.spawn(function()
+        while C.Running do
+            pcall(C.TryClaimAll)
+            task.wait(C.Interval)
+        end
+        C.Running = false
+    end)
+    MystrixHub.TasksController.Insert(C.Loop)
+end
+
+function MystrixHub.Functions.StopOnlineRewardFarm()
+    local C = MystrixHub.OnlineRewardController
+    C.Enabled = false
+    C.Running = false
+    if C.Loop then
+        task.cancel(C.Loop)
+        C.Loop = nil
+    end
+end
+
+MystrixHub.IndexRewardController = {
+    Enabled     = false,
+    Running     = false,
+    Loop        = nil,
+    Interval    = 5,
+    _categories = nil,
+}
+
+function MystrixHub.IndexRewardController.BuildCategories()
+    local C = MystrixHub.IndexRewardController
+    if C._categories then return C._categories end
+
+    local okW, HW = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Weapon.Helper)
+    end)
+    local okA, HA = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Armor.Helper)
+    end)
+    local okO, HO = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Ore.Helper)
+    end)
+    if not (okW and okA and okO) then return nil end
+
+    local cats = {}
+
+    if type(HW.GetConfig) == "function" then
+        local cfg = HW.GetConfig()
+        if type(cfg) == "table" then
+            table.insert(cats, { config = cfg, getType = function(id) return "Weapon" end })
+        end
+    end
+
+    if type(HA.GetConfig) == "function" then
+        local cfg = HA.GetConfig()
+        if type(cfg) == "table" then
+            table.insert(cats, { config = cfg, getType = function(id)
+                local ok, t = pcall(HA.GetBigType, id)
+                if ok and type(t) == "string" then return t end
+                return "Armor"
+            end })
+        end
+    end
+
+    if type(HO.GetConfig) == "function" then
+        local cfg = HO.GetConfig()
+        if type(cfg) == "table" then
+            table.insert(cats, { config = cfg, getType = function(id) return "Ore" end })
+        end
+    end
+
+    C._categories = cats
+    return cats
+end
+
+function MystrixHub.IndexRewardController.TryClaimLevelReward()
+    local ok, IndexData = pcall(function()
+        return require(game:GetService("ReplicatedStorage").LocalData.IndexData)
+    end)
+    if not ok then return end
+
+    local ok2, Helper = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Index.Helper)
+    end)
+    if not ok2 then return end
+
+    local data = IndexData.GetData()
+    if not data or type(data) ~= "table" then return end
+
+    local level = tonumber(data.level) or 0
+    local exp   = tonumber(data.exp)   or 0
+
+    local ok3, needExp = pcall(Helper.GetNeedExp, level + 1)
+    if not ok3 then return end
+    if type(needExp) ~= "number" then return end
+    if needExp <= 0 then return end
+    if exp < needExp then return end
+
+    pcall(function() IndexData.TryClaimedLevel() end)
+    task.wait(0.8)
+end
+
+function MystrixHub.IndexRewardController.TryClaimAll()
+    local C = MystrixHub.IndexRewardController
+
+    local ok, IndexData = pcall(function()
+        return require(game:GetService("ReplicatedStorage").LocalData.IndexData)
+    end)
+    if not ok then return end
+
+    local cats = C.BuildCategories()
+    if not cats then return end
+
+    for _, cat in ipairs(cats) do
+        for id, _ in pairs(cat.config) do
+            local idxType = cat.getType(id)
+
+            local isUnlocked = false
+            local isClaimed  = false
+
+            pcall(function()
+                isUnlocked = IndexData.IsUnlocked(idxType, id) and true or false
+            end)
+            pcall(function()
+                isClaimed = IndexData.IsClaimed(idxType, id) and true or false
+            end)
+
+            if isUnlocked and not isClaimed then
+                local ok2, claimed = pcall(function() return IndexData.TryClaimedExp(idxType, id) end)
+                if ok2 and claimed then
+                    task.wait(0.4)
+                else
+                    task.wait(0.15)
+                end
+            end
+        end
+    end
+
+    C.TryClaimLevelReward()
+end
+
+function MystrixHub.Functions.StartIndexRewardFarm()
+    local C = MystrixHub.IndexRewardController
+    if C.Running then return end
+    C.Enabled = true
+    C.Running = true
+    C.Loop = task.spawn(function()
+        while C.Running do
+            pcall(C.TryClaimAll)
+            task.wait(C.Interval)
+        end
+        C.Running = false
+    end)
+    MystrixHub.TasksController.Insert(C.Loop)
+end
+
+function MystrixHub.Functions.StopIndexRewardFarm()
+    local C = MystrixHub.IndexRewardController
+    C.Enabled = false
+    C.Running = false
+    if C.Loop then
+        task.cancel(C.Loop)
+        C.Loop = nil
+    end
+end
+
+MystrixHub.UpgradeController = {
+    Running       = false,
+    Loop          = nil,
+    Interval      = 2,
+    Flags         = { OreCount = false, LuckBoost = false, TrainBoost = false },
+    _resolvedKeys = { OreCount = nil, LuckBoost = nil, TrainBoost = nil },
+    _keywordMap   = {
+        OreCount  = { "orepack", "ore_count", "orecount", "ore_pack", "pack" },
+        LuckBoost = { "luck" },
+        TrainBoost = { "train" },
+    },
+}
+
+function MystrixHub.UpgradeController.GetUpgradeData()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").LocalData.UpgradeData)
+    end)
+    if ok and type(mod) == "table" then return mod end
+    return nil
+end
+
+function MystrixHub.UpgradeController.GetUpgradeHelper()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Upgrade.Helper)
+    end)
+    if ok and type(mod) == "table" then return mod end
+    return nil
+end
+
+function MystrixHub.UpgradeController.ResolveKey(sectionName)
+    local C = MystrixHub.UpgradeController
+    if C._resolvedKeys[sectionName] then return C._resolvedKeys[sectionName] end
+
+    local keywords = C._keywordMap[sectionName]
+    if not keywords then return nil end
+
+    local UpgradeData = C.GetUpgradeData()
+    if not UpgradeData then return nil end
+
+    local data = UpgradeData.GetData()
+    if type(data) ~= "table" then return nil end
+
+    for key, _ in pairs(data) do
+        local lk = tostring(key):lower():gsub("[%s_%-]", "")
+        for _, kw in ipairs(keywords) do
+            local kwNorm = kw:gsub("[%s_%-]", "")
+            if lk == kwNorm or lk:find(kwNorm, 1, true) then
+                C._resolvedKeys[sectionName] = key
+                return key
+            end
+        end
+    end
+
+    return nil
+end
+
+function MystrixHub.UpgradeController.IsSectionEnabled()
+    local C = MystrixHub.UpgradeController
+    for _, v in pairs(C.Flags) do
+        if v then return true end
+    end
+    return false
+end
+
+function MystrixHub.UpgradeController.GetCoinValue()
+    local LocalPlayer = game.Players.LocalPlayer
+    local paths = {
+        { "Eco", "coin" },
+        { "Eco", "Coin" },
+        { "Eco", "coins" },
+        { "Eco", "Coins" },
+        { "Stats", "coin" },
+        { "Leaderstats", "Coin" },
+    }
+    for _, path in ipairs(paths) do
+        local node = LocalPlayer
+        local ok = true
+        for _, name in ipairs(path) do
+            local ok2, child = pcall(function() return node:WaitForChild(name, 0.1) end)
+            if not ok2 or not child then
+                ok = false
+                break
+            end
+            node = child
+        end
+        if ok and node and node:IsA("ValueBase") then
+            local v = tonumber(node.Value)
+            if v then return v end
+        end
+        if ok and node and type(node) == "number" then
+            return node
+        end
+    end
+    return nil
+end
+
+function MystrixHub.UpgradeController.TryUpgradeSection(sectionName)
+    local C = MystrixHub.UpgradeController
+    if not C.Flags[sectionName] then return end
+
+    local key = C.ResolveKey(sectionName)
+    if not key then return end
+
+    local UpgradeData = C.GetUpgradeData()
+    if not UpgradeData then return end
+
+    local Helper = C.GetUpgradeHelper()
+    if not Helper then return end
+
+    local level = tonumber(UpgradeData.GetLevel(key)) or 0
+
+    if type(Helper.CheckIsMax) == "function" then
+        local ok, isMax = pcall(Helper.CheckIsMax, key, level)
+        if ok and isMax then return end
+    end
+
+    local price = nil
+    if type(Helper.GetPrice) == "function" then
+        local ok, p = pcall(Helper.GetPrice, key, level + 1)
+        if ok then price = tonumber(p) end
+    end
+
+    if not price or price <= 0 then return end
+
+    local coin = C.GetCoinValue()
+    if coin == nil then return end
+    if coin < price then return end
+
+    pcall(function() UpgradeData.UpgradeOnce(key) end)
+    task.wait(0.5)
+
+    local newLevel = tonumber(UpgradeData.GetLevel(key)) or level
+    if newLevel > level then
+        WindUI:Notify({
+            Title    = sectionName .. " Upgraded",
+            Content  = string.format("Level %d -> %d", level, newLevel),
+            Duration = 2,
+            Icon     = "arrow-up-circle",
+        })
+    end
+end
+
+function MystrixHub.UpgradeController.Tick()
+    local C = MystrixHub.UpgradeController
+    for sectionName, enabled in pairs(C.Flags) do
+        if enabled then
+            C.TryUpgradeSection(sectionName)
+            task.wait(0.35)
+        end
+    end
+end
+
+function MystrixHub.Functions.StartUpgradeFarm()
+    local C = MystrixHub.UpgradeController
+    if C.Running then return end
+    C.Running = true
+    C.Loop = task.spawn(function()
+        while C.IsSectionEnabled() do
+            pcall(C.Tick)
+            task.wait(C.Interval)
+        end
+        C.Running = false
+    end)
+    MystrixHub.TasksController.Insert(C.Loop)
+end
+
+function MystrixHub.Functions.StopUpgradeFarm()
+    local C = MystrixHub.UpgradeController
+    C.Running = false
+    if C.Loop then
+        task.cancel(C.Loop)
+        C.Loop = nil
+    end
+end
+
+function MystrixHub.Functions.SetUpgradeFlag(sectionName, enabled)
+    local C = MystrixHub.UpgradeController
+    C.Flags[sectionName] = enabled and true or false
+    if C.IsSectionEnabled() then
+        if not C.Running then
+            MystrixHub.Functions.StartUpgradeFarm()
+        end
+    else
+        MystrixHub.Functions.StopUpgradeFarm()
+    end
+end
+
+MystrixHub.AutoTrainController = {
+    Enabled  = false,
+    Running  = false,
+    Loop     = nil,
+    Interval = 0.2,
+}
+
+function MystrixHub.AutoTrainController.GetRebirthValue()
+    local ok, v = pcall(function()
+        return game.Players.LocalPlayer:WaitForChild("Eco", 5):WaitForChild("rebirth", 5).Value
+    end)
+    if ok and type(v) == "number" then return v end
+    return nil
+end
+
+function MystrixHub.AutoTrainController.GetConfig()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.TrainArea.Helper)
+    end)
+    if not ok then return nil end
+    local ok2, cfg = pcall(mod.GetConfig)
+    if not ok2 or type(cfg) ~= "table" then return nil end
+    return cfg
+end
+
+function MystrixHub.AutoTrainController.GetPemData()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").LocalData.PemData)
+    end)
+    if ok and type(mod) == "table" then return mod end
+    return nil
+end
+
+function MystrixHub.AutoTrainController.CanAccess(id, entry, rebirth, PemData)
+    if entry.IsPay then
+        if PemData and type(PemData.isHavePem) == "function" then
+            local ok, has = pcall(PemData.isHavePem, "AutoTrainArea_" .. tostring(id))
+            if ok and has then return true end
+        end
+        return false
+    end
+    local need = entry.NeedRebirth or 0
+    return rebirth >= need
+end
+
+function MystrixHub.AutoTrainController.FindBestTreadmill()
+    local C = MystrixHub.AutoTrainController
+    local cfg = C.GetConfig()
+    if not cfg then return nil end
+    local rebirth = C.GetRebirthValue()
+    if not rebirth then return nil end
+    local PemData = C.GetPemData()
+
+    local best = nil
+    for id, entry in pairs(cfg) do
+        if C.CanAccess(id, entry, rebirth, PemData) then
+            local basic = entry.Basic or 0
+            if not best or basic > best.basic then
+                best = { id = id, basic = basic }
+            end
+        end
+    end
+    return best
+end
+
+function MystrixHub.AutoTrainController.GetTreadmillPart(id)
+    local root = workspace:FindFirstChild("TOUCHED")
+    root = root and root:FindFirstChild("AutoTrainArea")
+    if not root then return nil end
+    return root:FindFirstChild(tostring(id))
+end
+
+function MystrixHub.AutoTrainController.GetSpawnPart()
+    local candidates = {
+        workspace:FindFirstChild("SpawnLocation"),
+        workspace:FindFirstChild("Spawn"),
+        workspace.WorldModel and workspace.WorldModel:FindFirstChild("Spawn"),
+        workspace.WorldModel and workspace.WorldModel:FindFirstChild("SpawnLocation"),
+    }
+    for _, p in ipairs(candidates) do
+        if p and p:IsA("BasePart") then return p end
+    end
+    return nil
+end
+
+function MystrixHub.AutoTrainController.GetTranslateUtils()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Utils.TranslateUtils)
+    end)
+    return ok and mod or nil
+end
+
+function MystrixHub.AutoTrainController.GetTrainCTRL()
+    local ok, mod = pcall(function()
+        return require(game:GetService("ReplicatedStorage").CTRL.TrainCTRL)
+    end)
+    if ok and type(mod) == "table" then return mod end
+    return nil
+end
+
+function MystrixHub.AutoTrainController.TeleportToSpawn()
+    local C = MystrixHub.AutoTrainController
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local TranslateUtils = C.GetTranslateUtils()
+    if TranslateUtils and type(TranslateUtils.ToSpawn) == "function" then
+        local ok = pcall(function() TranslateUtils.ToSpawn(char) end)
+        if ok then return end
+    end
+
+    local spawn = C.GetSpawnPart()
+    if spawn then
+        pcall(function()
+            hrp.CFrame = spawn.CFrame + Vector3.new(0, 5, 0)
+            hrp.AssemblyLinearVelocity = Vector3.zero
+            hrp.AssemblyAngularVelocity = Vector3.zero
+        end)
+    end
+end
+
+function MystrixHub.AutoTrainController.Tick()
+    local C = MystrixHub.AutoTrainController
+
+    local char = game.Players.LocalPlayer.Character
+    if not char then return end
+    local hrp = char:FindFirstChild("HumanoidRootPart")
+    if not hrp then return end
+
+    local best = C.FindBestTreadmill()
+    if not best then return end
+
+    local part = C.GetTreadmillPart(best.id)
+    if part then
+        local targetPos
+        if part:IsA("BasePart") then
+            targetPos = part.Position + Vector3.new(0, 5, 0)
+        elseif part:IsA("Model") then
+            targetPos = part:GetPivot().Position + Vector3.new(0, 5, 0)
+        end
+        if targetPos then
+            local dist = (hrp.Position - targetPos).Magnitude
+            if dist > 12 then
+                pcall(function()
+                    hrp.CFrame = CFrame.new(targetPos)
+                    hrp.AssemblyLinearVelocity = Vector3.zero
+                    hrp.AssemblyAngularVelocity = Vector3.zero
+                end)
+                task.wait(0.25)
+            end
+        end
+    end
+
+    local TrainCTRL = C.GetTrainCTRL()
+    if TrainCTRL and type(TrainCTRL.TrainOnce) == "function" then
+        pcall(TrainCTRL.TrainOnce)
+    end
+end
+
+function MystrixHub.Functions.StartAutoTrain()
+    local C = MystrixHub.AutoTrainController
+    if C.Running then return end
+
+    local best = C.FindBestTreadmill()
+    if not best then
+        WindUI:Notify({
+            Title    = "Auto Train",
+            Content  = "No accessible treadmill found for your current rebirth.",
+            Duration = 4,
+            Icon     = "alert-circle",
+        })
+        return
+    end
+
+    C.Enabled = true
+    C.Running = true
+
+    C.Loop = task.spawn(function()
+        while C.Running do
+            local ok, err = pcall(C.Tick)
+            if not ok then
+                warn("[AutoTrain] " .. tostring(err))
+            end
+            task.wait(C.Interval)
+        end
+        C.Running = false
+    end)
+    MystrixHub.TasksController.Insert(C.Loop)
+end
+
+function MystrixHub.Functions.StopAutoTrain()
+    local C = MystrixHub.AutoTrainController
+    C.Enabled = false
+    C.Running = false
+    if C.Loop then
+        task.cancel(C.Loop)
+        C.Loop = nil
+    end
+    C.TeleportToSpawn()
+end
+
 pcall(function()
     local info = MarketplaceService:GetProductInfo(game.PlaceId)
     MystrixHub.Meta.GameName = info.Name or "Unknown Game"
@@ -1857,9 +2612,13 @@ else
 end
 
 -- Setup Only Home & Settings Tabs
-MystrixHub.UIController.Tabs.Home     = MystrixHub.UIController.Window:Tab({ Title = "Home",     Icon = "house" })
-MystrixHub.UIController.Tabs.Main = MystrixHub.UIController.Window:Tab({ Title = "Main", Icon = "monitor" })
-MystrixHub.UIController.Tabs.Settings = MystrixHub.UIController.Window:Tab({ Title = "Settings", Icon = "settings" })
+MystrixHub.UIController.Tabs.Home       = MystrixHub.UIController.Window:Tab({ Title = "Home",         Icon = "house" })
+MystrixHub.UIController.Tabs.Main       = MystrixHub.UIController.Window:Tab({ Title = "Main",         Icon = "sword" })
+MystrixHub.UIController.Tabs.FrostTower = MystrixHub.UIController.Window:Tab({ Title = "Frost Tower", Icon = "snowflake" })
+MystrixHub.UIController.Tabs.Dungeon    = MystrixHub.UIController.Window:Tab({ Title = "Dungeon",      Icon = "skull" })
+MystrixHub.UIController.Tabs.Upgrades   = MystrixHub.UIController.Window:Tab({ Title = "Upgrades",     Icon = "arrow-up-circle" })
+MystrixHub.UIController.Tabs.Rewards    = MystrixHub.UIController.Window:Tab({ Title = "Rewards",      Icon = "gift" })
+MystrixHub.UIController.Tabs.Settings   = MystrixHub.UIController.Window:Tab({ Title = "Settings",     Icon = "settings" })
 MystrixHub.UIController.Tabs.Home:Select()
 
 local _discordWaitStart = tick()
@@ -1911,82 +2670,435 @@ end)
 
 MystrixHub.UIController.Tabs.Home:Section({ Title = "Update", Icon = "solar:moon-fog-outline", Box = true, Opened = true }):Paragraph({
     Title   = "UPDATED — " .. MystrixHub.Meta.Version,
-    Desc    = "-> Beta Script, to suggest features or report bugs join the discord.",
+    Desc    = "-> UPON KEY EXPIRATION, YOU WILL BE KICKED!\n-> General setup template initialized.",
     Locked  = false,
     Buttons = {}
 })
 
-local WheelieSection = MystrixHub.UIController.Tabs.Main:Section({
-    Title = "Wheelie",
-    Icon = "bike",
-    Box = true,
-    Opened = true,
-})
-
-WheelieSection:Toggle({
-    Title = "Auto Wheelie",
-    Value = false,
-    Flag = "AutoWheelie_Enabled",
-    Callback = function(v)
-        if v then
-            MystrixHub.Functions.StartAutoWheelie()
-        else
-            MystrixHub.Functions.StopAutoWheelie()
-        end
-    end,
-})
-
-local MainSpeedSection = MystrixHub.UIController.Tabs.Main:Section({
-    Title  = "Speed",
-    Icon   = "gauge",
+local InstantKillSection = MystrixHub.UIController.Tabs.Main:Section({
+    Title  = "Instant Kill",
+    Icon   = "skull",
     Box    = true,
     Opened = true,
 })
 
-MainSpeedSection:Slider({
-    Title = "Speed Multiplier",
-    Value = { Min = 1, Max = 6, Default = 1 },
-    Step  = 0.1,
-    Flag  = "Speed_Multiplier",
+InstantKillSection:Toggle({
+    Title    = "Enable Instant Kill",
+    Value    = false,
+    Flag     = "InstantKill_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartInstantKill()
+        else
+            MystrixHub.Functions.StopInstantKill()
+        end
+    end,
+})
+
+local GodModeSection = MystrixHub.UIController.Tabs.Main:Section({
+    Title  = "God Mode",
+    Icon   = "shield-check",
+    Box    = true,
+    Opened = true,
+})
+
+GodModeSection:Toggle({
+    Title    = "Enable God Mode",
+    Value    = false,
+    Flag     = "GodMode_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartGodMode()
+        else
+            MystrixHub.Functions.StopGodMode()
+        end
+    end,
+})
+
+local ForgeSection = MystrixHub.UIController.Tabs.Main:Section({
+    Title  = "Forge",
+    Icon   = "hammer",
+    Box    = true,
+    Opened = true,
+})
+
+ForgeSection:Toggle({
+    Title    = "Skip Forge Animations",
+    Value    = false,
+    Flag     = "ForgeSkip_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartForgeSkip()
+        else
+            MystrixHub.Functions.StopForgeSkip()
+        end
+    end,
+})
+
+local RebirthSection = MystrixHub.UIController.Tabs.Main:Section({
+    Title  = "Rebirth",
+    Icon   = "refresh-cw",
+    Box    = true,
+    Opened = true,
+})
+
+RebirthSection:Toggle({
+    Title    = "Auto Rebirth",
+    Value    = false,
+    Flag     = "AutoRebirth_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartAutoRebirth()
+        else
+            MystrixHub.Functions.StopAutoRebirth()
+        end
+    end,
+})
+
+local TrainSection = MystrixHub.UIController.Tabs.Main:Section({
+    Title  = "Train",
+    Icon   = "dumbbell",
+    Box    = true,
+    Opened = true,
+})
+
+TrainSection:Toggle({
+    Title    = "Auto Train",
+    Value    = false,
+    Flag     = "AutoTrain_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartAutoTrain()
+        else
+            MystrixHub.Functions.StopAutoTrain()
+        end
+    end,
+})
+
+local function GetFrostTowerWaveNames()
+    local names = { "All" }
+    local ok, cfg = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Dungeon.Helper).GetConfig()
+    end)
+    local maxR = 30
+    if ok and type(cfg) == "table" then
+        maxR = #cfg
+    end
+    for i = 1, maxR do
+        table.insert(names, tostring(i))
+    end
+    return names
+end
+
+local FrostTowerSection = MystrixHub.UIController.Tabs.FrostTower:Section({
+    Title  = "Auto Farm",
+    Icon   = "repeat",
+    Box    = true,
+    Opened = true,
+})
+
+local TicketParagraph = FrostTowerSection:Paragraph({
+    Title = "Frost Tower Tickets",
+    Desc  = "Tower Tickets: --",
+    Locked = false,
+    Buttons = {},
+})
+
+MystrixHub.FrostTowerController.StartTicketWatcher(TicketParagraph)
+
+MystrixHub.UIController.Drops.FrostTowerWaves = FrostTowerSection:Dropdown({
+    Title            = "Select Waves",
+    Icon             = "list-checks",
+    SearchBarEnabled = true,
+    Values           = GetFrostTowerWaveNames(),
+    Multi            = true,
+    Value            = { "All" },
+    Flag             = "FrostTower_Waves",
     Callback = function(value)
-        MystrixHub.Functions.SetSpeedMultiplier(value)
+        local list = {}
+        if type(value) == "table" then
+            for _, v in ipairs(value) do
+                if type(v) == "string" and v ~= "" then
+                    table.insert(list, v)
+                end
+            end
+        elseif type(value) == "string" and value ~= "" then
+            table.insert(list, value)
+        end
+
+        if table.find(list, "All") then
+            MystrixHub.FrostTowerController.AllMode      = true
+            MystrixHub.FrostTowerController.WantedWaves  = {}
+        else
+            MystrixHub.FrostTowerController.AllMode = false
+            local nums = {}
+            for _, v in ipairs(list) do
+                local n = tonumber(v)
+                if n then table.insert(nums, n) end
+            end
+            table.sort(nums)
+            MystrixHub.FrostTowerController.WantedWaves = nums
+        end
     end,
 })
 
-local MainQuestsSection = MystrixHub.UIController.Tabs.Main:Section({
-    Title  = "Quests",
-    Icon   = "clipboard-list",
+FrostTowerSection:Toggle({
+    Title    = "Enable Auto Farm",
+    Value    = false,
+    Flag     = "FrostTower_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartFrostTowerFarm()
+        else
+            MystrixHub.Functions.StopFrostTowerFarm()
+        end
+    end,
+})
+
+local function GetStageNumbersForDropdown()
+    local names = { "All" }
+    local ok, cfg = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Stage.Helper).GetStageEnemyConfig()
+    end)
+    if ok and type(cfg) == "table" then
+        local nums = {}
+        for k in pairs(cfg) do
+            local n = tonumber(k:match("%d+"))
+            if n then table.insert(nums, n) end
+        end
+        table.sort(nums)
+        for _, n in ipairs(nums) do table.insert(names, tostring(n)) end
+    else
+        for i = 1, 30 do table.insert(names, tostring(i)) end
+    end
+    return names
+end
+
+local function BuildOreNameMap()
+    local nameToId = {}
+    local idToName = {}
+    local oreFolder = game:GetService("ReplicatedStorage").Assets:FindFirstChild("Ore")
+    if not oreFolder then return nameToId, idToName end
+    local ok, oreHelper = pcall(function()
+        return require(game:GetService("ReplicatedStorage").Config.Ore.Helper)
+    end)
+    local ids = {}
+    for _, child in ipairs(oreFolder:GetChildren()) do
+        if child:IsA("Model") then
+            table.insert(ids, child.Name)
+        end
+    end
+    table.sort(ids, function(a, b)
+        return (tonumber(a:match("%d+")) or 0) < (tonumber(b:match("%d+")) or 0)
+    end)
+    for _, id in ipairs(ids) do
+        local display = id
+        if ok and oreHelper.GetDisName then
+            local ok2, n = pcall(oreHelper.GetDisName, id)
+            if ok2 and type(n) == "string" and n ~= "" then
+                display = n
+            end
+        end
+        if nameToId[display] then
+            display = display .. " (" .. id .. ")"
+        end
+        nameToId[display] = id
+        idToName[id] = display
+    end
+    return nameToId, idToName
+end
+
+local function GetOreNamesForDropdown()
+    local names = { "All" }
+    local nameToId = BuildOreNameMap()
+    local keys = {}
+    for k in pairs(nameToId) do table.insert(keys, k) end
+    table.sort(keys)
+    for _, k in ipairs(keys) do table.insert(names, k) end
+    return names
+end
+
+local StageFarmSection = MystrixHub.UIController.Tabs.Dungeon:Section({
+    Title  = "Auto Farm",
+    Icon   = "repeat",
     Box    = true,
     Opened = true,
 })
 
-MainQuestsSection:Toggle({
-    Title = "Auto Claim Quests",
-    Value = false,
-    Flag  = "QuestAutoClaim_Enabled",
-    Callback = function(v)
-        if v then
-            MystrixHub.QuestAutoClaimController.Start()
+MystrixHub.UIController.Drops.StageFarmStages = StageFarmSection:Dropdown({
+    Title            = "Stages",
+    Icon             = "list-checks",
+    SearchBarEnabled = true,
+    Values           = GetStageNumbersForDropdown(),
+    Multi            = true,
+    Value            = { "All" },
+    Flag             = "StageFarm_Stages",
+    Callback = function(value)
+        local list = {}
+        if type(value) == "table" then
+            for _, v in ipairs(value) do
+                if type(v) == "string" and v ~= "" then
+                    table.insert(list, v)
+                end
+            end
+        elseif type(value) == "string" and value ~= "" then
+            table.insert(list, value)
+        end
+
+        if table.find(list, "All") then
+            MystrixHub.StageFarmController.AllMode      = true
+            MystrixHub.StageFarmController.WantedStages = {}
         else
-            MystrixHub.QuestAutoClaimController.Stop()
+            MystrixHub.StageFarmController.AllMode = false
+            local nums = {}
+            for _, v in ipairs(list) do
+                local n = tonumber(v)
+                if n then table.insert(nums, n) end
+            end
+            table.sort(nums)
+            local stages = {}
+            for _, n in ipairs(nums) do
+                table.insert(stages, "Stage_" .. n)
+            end
+            MystrixHub.StageFarmController.WantedStages = stages
         end
     end,
 })
 
-local MainAutoFarmSection = MystrixHub.UIController.Tabs.Main:Section({
-    Title = "Auto Farm", Icon = "tractor", Box = true, Opened = true,
+MystrixHub.UIController.Drops.StageFarmOres = StageFarmSection:Dropdown({
+    Title            = "Ores",
+    Icon             = "gem",
+    SearchBarEnabled = true,
+    Values           = GetOreNamesForDropdown(),
+    Multi            = true,
+    Value            = { "All" },
+    Flag             = "StageFarm_Ores",
+    Callback = function(value)
+        local list = {}
+        if type(value) == "table" then
+            for _, v in ipairs(value) do
+                if type(v) == "string" and v ~= "" then
+                    table.insert(list, v)
+                end
+            end
+        elseif type(value) == "string" and value ~= "" then
+            table.insert(list, value)
+        end
+
+        if table.find(list, "All") then
+            MystrixHub.StageFarmController.AllOresMode = true
+            MystrixHub.StageFarmController.WantedOres  = {}
+        else
+            MystrixHub.StageFarmController.AllOresMode = false
+            local nameToId = BuildOreNameMap()
+            local ids = {}
+            for _, display in ipairs(list) do
+                local id = nameToId[display]
+                if id then table.insert(ids, id) end
+            end
+            MystrixHub.StageFarmController.WantedOres = ids
+        end
+    end,
 })
 
-MainAutoFarmSection:Toggle({
-    Title = "Auto Farm Money",
-    Value = false,
-    Flag  = "AutoFarm_Enabled",
+StageFarmSection:Toggle({
+    Title    = "Start Auto Farm",
+    Value    = false,
+    Flag     = "StageFarm_Enabled",
     Callback = function(v)
         if v then
-            MystrixHub.Functions.StartAutoFarm()
+            MystrixHub.Functions.StartStageFarm()
         else
-            MystrixHub.Functions.StopAutoFarm()
+            MystrixHub.Functions.StopStageFarm()
         end
+    end,
+})
+
+local OnlineRewardsSection = MystrixHub.UIController.Tabs.Rewards:Section({
+    Title  = "Online Rewards",
+    Icon   = "clock",
+    Box    = true,
+    Opened = true,
+})
+
+OnlineRewardsSection:Toggle({
+    Title    = "Auto Claim Online Rewards",
+    Value    = false,
+    Flag     = "OnlineRewards_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartOnlineRewardFarm()
+        else
+            MystrixHub.Functions.StopOnlineRewardFarm()
+        end
+    end,
+})
+
+local IndexRewardsSection = MystrixHub.UIController.Tabs.Rewards:Section({
+    Title  = "Index Rewards",
+    Icon   = "list-checks",
+    Box    = true,
+    Opened = true,
+})
+
+IndexRewardsSection:Toggle({
+    Title    = "Auto Claim Index Rewards",
+    Value    = false,
+    Flag     = "IndexRewards_Enabled",
+    Callback = function(v)
+        if v then
+            MystrixHub.Functions.StartIndexRewardFarm()
+        else
+            MystrixHub.Functions.StopIndexRewardFarm()
+        end
+    end,
+})
+
+local OreCountSection = MystrixHub.UIController.Tabs.Upgrades:Section({
+    Title  = "Ore Count",
+    Icon   = "package",
+    Box    = true,
+    Opened = true,
+})
+
+OreCountSection:Toggle({
+    Title    = "Auto Upgrade",
+    Value    = false,
+    Flag     = "Upgrade_OreCount",
+    Callback = function(v)
+        MystrixHub.Functions.SetUpgradeFlag("OreCount", v)
+    end,
+})
+
+local LuckBoostSection = MystrixHub.UIController.Tabs.Upgrades:Section({
+    Title  = "Luck Boost",
+    Icon   = "clover",
+    Box    = true,
+    Opened = true,
+})
+
+LuckBoostSection:Toggle({
+    Title    = "Auto Upgrade",
+    Value    = false,
+    Flag     = "Upgrade_LuckBoost",
+    Callback = function(v)
+        MystrixHub.Functions.SetUpgradeFlag("LuckBoost", v)
+    end,
+})
+
+local TrainBoostSection = MystrixHub.UIController.Tabs.Upgrades:Section({
+    Title  = "Train Boost",
+    Icon   = "dumbbell",
+    Box    = true,
+    Opened = true,
+})
+
+TrainBoostSection:Toggle({
+    Title    = "Auto Upgrade",
+    Value    = false,
+    Flag     = "Upgrade_TrainBoost",
+    Callback = function(v)
+        MystrixHub.Functions.SetUpgradeFlag("TrainBoost", v)
     end,
 })
 
@@ -2082,7 +3194,7 @@ local antiAfkRunning = false
 
 MiscSection:Toggle({
     Title    = "Anti AFK",
-    Value    = true,
+    Value    = false,
     Flag     = "AntiAFK",
     Callback = function(state)
         if state then
