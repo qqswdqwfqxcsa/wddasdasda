@@ -40,7 +40,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v2.2"
+local CURRENT_VERSION  = "v2.3"
 local DISCORD_INVITE   = "46JkThWjPB"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "rap"
@@ -4161,7 +4161,6 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                 task.wait(0.15)
                 MystrixHub.Functions.KillMountVelocity()
 
-                local dipAnchored = false
                 local function anchorAtDip()
                     local c = LocalPlayer.Character
                     local h = c and c:FindFirstChild("HumanoidRootPart")
@@ -4172,11 +4171,9 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                         h.CFrame   = CFrame.new(dipPos)
                         h.Anchored = true
                     end)
-                    dipAnchored = true
                 end
 
                 local function unanchorFromDip()
-                    if not dipAnchored then return end
                     local c = LocalPlayer.Character
                     local h = c and c:FindFirstChild("HumanoidRootPart")
                     if h then
@@ -4186,36 +4183,36 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                             h.AssemblyAngularVelocity = Vector3.zero
                         end)
                     end
-                    dipAnchored = false
                 end
 
                 anchorAtDip()
-                task.wait(0.4)
+                task.wait(0.3)
 
-                local lastFireAttempt = tick()
-                for i = 1, 10 do
+                local fireDeadline = tick() + 12
+                while MystrixHub.Functions.IsCarryingEgg() and tick() < fireDeadline do
+                    if runningCheck and not runningCheck() then break end
                     pcall(function() dipRemote:FireServer() end)
-                    if i < 10 then task.wait(0.2) end
+                    anchorAtDip()
+                    task.wait(0.2)
                 end
 
                 local startT   = tick()
-                local MAX_HOLD = 25
-                local resultAt = nil
+                local MAX_HOLD = 30
                 local minEnd   = nil
 
                 while tick() - startT < MAX_HOLD do
                     if runningCheck and not runningCheck() then break end
 
-                    if resultPayload and not resultAt then
-                        resultAt = tick()
-                        unanchorFromDip()
+                    anchorAtDip()
+
+                    if resultPayload and not minEnd then
                         local arriveAt = tonumber(resultPayload.ArriveAt)
                         local remaining = 0
                         if arriveAt then
                             remaining = arriveAt - workspace:GetServerTimeNow()
                         end
                         if remaining < 2 then remaining = 2 end
-                        minEnd = resultAt + remaining
+                        minEnd = tick() + remaining
                     end
 
                     if minEnd and tick() >= minEnd then
@@ -4231,22 +4228,11 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                     local forceDeadline = tick() + 5
                     while tick() < forceDeadline and MystrixHub.Functions.IsCarryingEgg() do
                         if runningCheck and not runningCheck() then break end
-                        local curChar = LocalPlayer.Character
-                        local curHrp  = curChar and curChar:FindFirstChild("HumanoidRootPart")
-                        if curHrp then
-                            pcall(function()
-                                curHrp.CFrame = CFrame.new(dipPos)
-                                curHrp.AssemblyLinearVelocity  = Vector3.zero
-                                curHrp.AssemblyAngularVelocity = Vector3.zero
-                            end)
-                        end
                         pcall(function() dipRemote:FireServer() end)
                         task.wait(0.25)
                         if resultPayload then break end
                     end
                 end
-
-                unanchorFromDip()
 
                 if conn1 then conn1:Disconnect() end
                 if conn2 then conn2:Disconnect() end
@@ -4387,7 +4373,6 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
     task.wait(0.15)
     MystrixHub.Functions.KillMountVelocity()
 
-    local dipAnchored = false
     local function anchorAtDip()
         local c = LocalPlayer.Character
         local h = c and c:FindFirstChild("HumanoidRootPart")
@@ -4398,11 +4383,9 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
             h.CFrame   = CFrame.new(dipPos)
             h.Anchored = true
         end)
-        dipAnchored = true
     end
 
     local function unanchorFromDip()
-        if not dipAnchored then return end
         local c = LocalPlayer.Character
         local h = c and c:FindFirstChild("HumanoidRootPart")
         if h then
@@ -4412,35 +4395,36 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
                 h.AssemblyAngularVelocity = Vector3.zero
             end)
         end
-        dipAnchored = false
     end
 
     anchorAtDip()
-    task.wait(0.4)
+    task.wait(0.3)
 
-    for i = 1, 10 do
+    local fireDeadline = tick() + 12
+    while MystrixHub.Functions.IsCarryingEgg() and tick() < fireDeadline do
+        if runningCheck and not runningCheck() then break end
         pcall(function() dipRemote:FireServer() end)
-        if i < 10 then task.wait(0.2) end
+        anchorAtDip()
+        task.wait(0.2)
     end
 
     local startT   = tick()
-    local MAX_HOLD = 25
-    local resultAt = nil
+    local MAX_HOLD = 30
     local minEnd   = nil
 
     while tick() - startT < MAX_HOLD do
         if runningCheck and not runningCheck() then break end
 
-        if resultPayload and not resultAt then
-            resultAt = tick()
-            unanchorFromDip()
+        anchorAtDip()
+
+        if resultPayload and not minEnd then
             local arriveAt = tonumber(resultPayload.ArriveAt)
             local remaining = 0
             if arriveAt then
                 remaining = arriveAt - workspace:GetServerTimeNow()
             end
             if remaining < 2 then remaining = 2 end
-            minEnd = resultAt + remaining
+            minEnd = tick() + remaining
         end
 
         if minEnd and tick() >= minEnd then
@@ -4456,15 +4440,6 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
         local forceDeadline = tick() + 5
         while tick() < forceDeadline and MystrixHub.Functions.IsCarryingEgg() do
             if runningCheck and not runningCheck() then break end
-            local curChar = LocalPlayer.Character
-            local curHrp  = curChar and curChar:FindFirstChild("HumanoidRootPart")
-            if curHrp then
-                pcall(function()
-                    curHrp.CFrame = CFrame.new(dipPos)
-                    curHrp.AssemblyLinearVelocity  = Vector3.zero
-                    curHrp.AssemblyAngularVelocity = Vector3.zero
-                end)
-            end
             pcall(function() dipRemote:FireServer() end)
             task.wait(0.25)
             if resultPayload then break end
@@ -4483,8 +4458,6 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
             end
         end
     end
-
-    unanchorFromDip()
 
     if conn1 then conn1:Disconnect() end
     if conn2 then conn2:Disconnect() end
