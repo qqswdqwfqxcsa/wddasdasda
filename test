@@ -40,7 +40,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v2.66"
+local CURRENT_VERSION  = "v2.44"
 local DISCORD_INVITE   = "46JkThWjPB"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "rap"
@@ -4514,30 +4514,106 @@ function MystrixHub.Functions.ReturnToBase(plot)
         return true
     end
 
+    local heldEggName = nil
+    local heldEggUid  = nil
+    local heldItem = MystrixHub.Functions.GetHeldEgg()
+    if heldItem and heldItem.instance then
+        heldEggName = heldItem.egg
+        for _, a in ipairs({"Uid", "UID", "uid", "Id", "ID"}) do
+            local v = heldItem.instance:GetAttribute(a)
+            if v and tostring(v) ~= "" then
+                heldEggUid = tostring(v)
+                break
+            end
+        end
+        if not heldEggUid then
+            for _, child in ipairs(heldItem.instance:GetDescendants()) do
+                if child:IsA("StringValue") and child.Value ~= "" and #child.Value >= 16 then
+                    heldEggUid = child.Value
+                    break
+                end
+            end
+        end
+    end
+
     local stagingPos = returnPos + Vector3.new(100, 0, 0)
 
     MystrixHub.Functions.TeleportCharacterTo(stagingPos)
-    task.wait(0.3)
+    task.wait(0.35)
 
     local RS = game:GetService("ReplicatedStorage")
     local remotes = RS:FindFirstChild("Remotes")
     local gameFolder = remotes and remotes:FindFirstChild("Game")
     local BasketDrop = gameFolder and gameFolder:FindFirstChild("BasketDrop")
 
-    if BasketDrop then
-        pcall(function() BasketDrop:FireServer() end)
+    local dropped = not MystrixHub.Functions.IsCarryingEgg()
+    if BasketDrop and not dropped then
+        local dropDeadline = tick() + 5
+        while tick() < dropDeadline do
+            pcall(function() BasketDrop:FireServer() end)
+            task.wait(0.25)
+            if not MystrixHub.Functions.IsCarryingEgg() then
+                dropped = true
+                break
+            end
+        end
     end
 
-    local dropDeadline = tick() + 3
-    while MystrixHub.Functions.IsCarryingEgg() and tick() < dropDeadline do
-        task.wait(0.05)
+    if not dropped then
+        MystrixHub.Functions.KillMountVelocity()
+        MystrixHub.Functions.TweenToPosition(returnPos, 30, 4)
+        MystrixHub.Functions.KillMountVelocity()
+        task.wait(0.5)
+        A.ReturningToBase = false
+        return true
     end
 
-    task.wait(0.2)
+    task.wait(0.4)
 
-    local picked = false
     local renderedEggs = workspace:FindFirstChild("RenderedEggs")
-    if renderedEggs then
+    if not renderedEggs then
+        A.ReturningToBase = false
+        return true
+    end
+
+    local targetEgg = nil
+
+    if heldEggUid then
+        for _, egg in ipairs(renderedEggs:GetChildren()) do
+            if egg:IsA("Model") then
+                local uid = MystrixHub.Functions.GetEggUid(egg)
+                if uid and uid == heldEggUid then
+                    targetEgg = egg
+                    break
+                end
+            end
+        end
+    end
+
+    if not targetEgg and heldEggName then
+        local wantName = heldEggName:match("^([^%[]+)") or heldEggName
+        wantName = wantName:match("^%s*(.-)%s*$") or wantName
+        local closest, closestDist = nil, math.huge
+        for _, egg in ipairs(renderedEggs:GetChildren()) do
+            if egg:IsA("Model") then
+                local baseName = egg.Name:match("^([^%[]+)") or egg.Name
+                baseName = baseName:match("^%s*(.-)%s*$") or baseName
+                if baseName:lower() == wantName:lower() then
+                    local ok, pivot = pcall(function() return egg:GetPivot().Position end)
+                    if ok and pivot then
+                        local d = (pivot - stagingPos).Magnitude
+                        if d < closestDist and d < 60 then
+                            closest = egg
+                            closestDist = d
+                        end
+                    end
+                end
+            end
+        end
+        targetEgg = closest
+    end
+
+    if not targetEgg then
         local closest, closestDist = nil, math.huge
         for _, egg in ipairs(renderedEggs:GetChildren()) do
             if egg:IsA("Model") then
@@ -4551,45 +4627,45 @@ function MystrixHub.Functions.ReturnToBase(plot)
                 end
             end
         end
+        targetEgg = closest
+    end
 
-        if closest then
-            closest:SetAttribute("MystrixStaged", true)
+    local picked = false
+    if targetEgg then
+        targetEgg:SetAttribute("MystrixStaged", true)
 
-            MystrixHub.Functions.PickupEgg(closest)
-            local deadline = tick() + 2
-            while tick() < deadline do
-                if MystrixHub.Functions.IsCarryingEgg() then
-                    picked = true
-                    break
+        local ok, pivot = pcall(function() return targetEgg:GetPivot().Position end)
+        if ok and pivot then
+            MystrixHub.Functions.TeleportCharacterTo(pivot + Vector3.new(0, cfg.TravelHoverHeight, 0))
+            task.wait(0.15)
+        end
+
+        MystrixHub.Functions.PickupEgg(targetEgg)
+        local deadline = tick() + 3
+        while tick() < deadline do
+            if MystrixHub.Functions.IsCarryingEgg() then
+                picked = true
+                break
+            end
+            MystrixHub.Functions.PickupEgg(targetEgg)
+            task.wait(0.1)
+        end
+
+        if picked then
+            targetEgg:SetAttribute("MystrixStaged", nil)
+        else
+            task.delay(30, function()
+                if targetEgg and targetEgg.Parent then
+                    targetEgg:SetAttribute("MystrixStaged", nil)
                 end
-                task.wait(0.05)
-            end
-
-            if picked then
-                closest:SetAttribute("MystrixStaged", nil)
-            else
-                task.delay(30, function()
-                    if closest and closest.Parent then
-                        closest:SetAttribute("MystrixStaged", nil)
-                    end
-                end)
-            end
+            end)
         end
     end
 
-    if picked then
-        MystrixHub.Functions.KillMountVelocity()
-        MystrixHub.Functions.TweenToPosition(returnPos, 30, 4)
-        MystrixHub.Functions.KillMountVelocity()
-        task.wait(0.5)
-    else
-        pcall(function()
-            hrp.CFrame = CFrame.new(returnPos)
-            hrp.AssemblyLinearVelocity  = Vector3.zero
-            hrp.AssemblyAngularVelocity = Vector3.zero
-        end)
-        task.wait(0.4)
-    end
+    MystrixHub.Functions.KillMountVelocity()
+    MystrixHub.Functions.TweenToPosition(returnPos, 30, 4)
+    MystrixHub.Functions.KillMountVelocity()
+    task.wait(0.5)
 
     A.ReturningToBase = false
     return true
