@@ -40,7 +40,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v2.3"
+local CURRENT_VERSION  = "v2.5"
 local DISCORD_INVITE   = "46JkThWjPB"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "rap"
@@ -4188,47 +4188,61 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                 anchorAtDip()
                 task.wait(0.3)
 
+                local dropped    = false
+                local lastFire   = 0
+                local FIRE_GAP   = 1.5
                 local fireDeadline = tick() + 12
-                while MystrixHub.Functions.IsCarryingEgg() and tick() < fireDeadline do
+
+                while tick() < fireDeadline do
                     if runningCheck and not runningCheck() then break end
-                    pcall(function() dipRemote:FireServer() end)
+
+                    if not dropped then
+                        if (tick() - lastFire) >= FIRE_GAP then
+                            pcall(function() dipRemote:FireServer() end)
+                            lastFire = tick()
+                        end
+
+                        if not MystrixHub.Functions.IsCarryingEgg() then
+                            dropped = true
+                        end
+                    end
+
                     anchorAtDip()
-                    task.wait(0.2)
+                    task.wait(0.05)
                 end
 
                 local startT   = tick()
                 local MAX_HOLD = 30
-                local minEnd   = nil
 
                 while tick() - startT < MAX_HOLD do
                     if runningCheck and not runningCheck() then break end
-
                     anchorAtDip()
 
-                    if resultPayload and not minEnd then
-                        local arriveAt = tonumber(resultPayload.ArriveAt)
-                        local remaining = 0
-                        if arriveAt then
-                            remaining = arriveAt - workspace:GetServerTimeNow()
-                        end
-                        if remaining < 2 then remaining = 2 end
-                        minEnd = tick() + remaining
-                    end
-
-                    if minEnd and tick() >= minEnd then
+                    if dropped and resultPayload and MystrixHub.Functions.IsCarryingEgg() then
                         break
                     end
 
                     task.wait(0.05)
                 end
 
+                if dropped and MystrixHub.Functions.IsCarryingEgg() and not resultPayload then
+                    local extraWait = tick() + 1
+                    while not resultPayload and tick() < extraWait do
+                        if runningCheck and not runningCheck() then break end
+                        task.wait(0.05)
+                    end
+                end
+
                 unanchorFromDip()
 
                 if not resultPayload and MystrixHub.Functions.IsCarryingEgg() then
-                    local forceDeadline = tick() + 5
+                    local forceDeadline = tick() + 3
                     while tick() < forceDeadline and MystrixHub.Functions.IsCarryingEgg() do
                         if runningCheck and not runningCheck() then break end
-                        pcall(function() dipRemote:FireServer() end)
+                        if (tick() - lastFire) >= FIRE_GAP then
+                            pcall(function() dipRemote:FireServer() end)
+                            lastFire = tick()
+                        end
                         task.wait(0.25)
                         if resultPayload then break end
                     end
@@ -4400,62 +4414,63 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
     anchorAtDip()
     task.wait(0.3)
 
+    local dropped    = false
+    local lastFire   = 0
+    local FIRE_GAP   = 1.5
     local fireDeadline = tick() + 12
-    while MystrixHub.Functions.IsCarryingEgg() and tick() < fireDeadline do
+
+    while tick() < fireDeadline do
         if runningCheck and not runningCheck() then break end
-        pcall(function() dipRemote:FireServer() end)
+
+        if not dropped then
+            if (tick() - lastFire) >= FIRE_GAP then
+                pcall(function() dipRemote:FireServer() end)
+                lastFire = tick()
+            end
+
+            if not MystrixHub.Functions.IsCarryingEgg() then
+                dropped = true
+            end
+        end
+
         anchorAtDip()
-        task.wait(0.2)
+        task.wait(0.05)
     end
 
     local startT   = tick()
     local MAX_HOLD = 30
-    local minEnd   = nil
 
     while tick() - startT < MAX_HOLD do
         if runningCheck and not runningCheck() then break end
-
         anchorAtDip()
 
-        if resultPayload and not minEnd then
-            local arriveAt = tonumber(resultPayload.ArriveAt)
-            local remaining = 0
-            if arriveAt then
-                remaining = arriveAt - workspace:GetServerTimeNow()
-            end
-            if remaining < 2 then remaining = 2 end
-            minEnd = tick() + remaining
-        end
-
-        if minEnd and tick() >= minEnd then
+        if dropped and resultPayload and MystrixHub.Functions.IsCarryingEgg() then
             break
         end
 
         task.wait(0.05)
     end
 
+    if dropped and MystrixHub.Functions.IsCarryingEgg() and not resultPayload then
+        local extraWait = tick() + 1
+        while not resultPayload and tick() < extraWait do
+            if runningCheck and not runningCheck() then break end
+            task.wait(0.05)
+        end
+    end
+
     unanchorFromDip()
 
     if not resultPayload and MystrixHub.Functions.IsCarryingEgg() then
-        local forceDeadline = tick() + 5
+        local forceDeadline = tick() + 3
         while tick() < forceDeadline and MystrixHub.Functions.IsCarryingEgg() do
             if runningCheck and not runningCheck() then break end
-            pcall(function() dipRemote:FireServer() end)
+            if (tick() - lastFire) >= FIRE_GAP then
+                pcall(function() dipRemote:FireServer() end)
+                lastFire = tick()
+            end
             task.wait(0.25)
             if resultPayload then break end
-        end
-
-        if not resultPayload and MystrixHub.Functions.IsCarryingEgg() then
-            local remotes = RS:FindFirstChild("Remotes")
-            local gameFolder = remotes and remotes:FindFirstChild("Game")
-            local BasketDrop = gameFolder and gameFolder:FindFirstChild("BasketDrop")
-            if BasketDrop then
-                for _ = 1, 5 do
-                    if not MystrixHub.Functions.IsCarryingEgg() then break end
-                    pcall(function() BasketDrop:FireServer() end)
-                    task.wait(0.2)
-                end
-            end
         end
     end
 
