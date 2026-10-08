@@ -40,7 +40,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v2.1"
+local CURRENT_VERSION  = "v2.2"
 local DISCORD_INVITE   = "46JkThWjPB"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "rap"
@@ -4161,6 +4161,35 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                 task.wait(0.15)
                 MystrixHub.Functions.KillMountVelocity()
 
+                local dipAnchored = false
+                local function anchorAtDip()
+                    local c = LocalPlayer.Character
+                    local h = c and c:FindFirstChild("HumanoidRootPart")
+                    if not h then return end
+                    pcall(function()
+                        h.AssemblyLinearVelocity  = Vector3.zero
+                        h.AssemblyAngularVelocity = Vector3.zero
+                        h.CFrame   = CFrame.new(dipPos)
+                        h.Anchored = true
+                    end)
+                    dipAnchored = true
+                end
+
+                local function unanchorFromDip()
+                    if not dipAnchored then return end
+                    local c = LocalPlayer.Character
+                    local h = c and c:FindFirstChild("HumanoidRootPart")
+                    if h then
+                        pcall(function()
+                            h.Anchored = false
+                            h.AssemblyLinearVelocity  = Vector3.zero
+                            h.AssemblyAngularVelocity = Vector3.zero
+                        end)
+                    end
+                    dipAnchored = false
+                end
+
+                anchorAtDip()
                 task.wait(0.4)
 
                 local lastFireAttempt = tick()
@@ -4177,23 +4206,9 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                 while tick() - startT < MAX_HOLD do
                     if runningCheck and not runningCheck() then break end
 
-                    local curChar = LocalPlayer.Character
-                    local curHrp  = curChar and curChar:FindFirstChild("HumanoidRootPart")
-                    if not curHrp then break end
-
-                    pcall(function()
-                        curHrp.CFrame = CFrame.new(dipPos)
-                        curHrp.AssemblyLinearVelocity  = Vector3.zero
-                        curHrp.AssemblyAngularVelocity = Vector3.zero
-                    end)
-
-                    if not resultPayload and (tick() - lastFireAttempt) >= 2 then
-                        pcall(function() dipRemote:FireServer() end)
-                        lastFireAttempt = tick()
-                    end
-
                     if resultPayload and not resultAt then
                         resultAt = tick()
+                        unanchorFromDip()
                         local arriveAt = tonumber(resultPayload.ArriveAt)
                         local remaining = 0
                         if arriveAt then
@@ -4209,6 +4224,8 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
 
                     task.wait(0.05)
                 end
+
+                unanchorFromDip()
 
                 if not resultPayload and MystrixHub.Functions.IsCarryingEgg() then
                     local forceDeadline = tick() + 5
@@ -4228,6 +4245,8 @@ function MystrixHub.Functions.RunVolcanoEggFlow(runningCheck)
                         if resultPayload then break end
                     end
                 end
+
+                unanchorFromDip()
 
                 if conn1 then conn1:Disconnect() end
                 if conn2 then conn2:Disconnect() end
@@ -4368,6 +4387,35 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
     task.wait(0.15)
     MystrixHub.Functions.KillMountVelocity()
 
+    local dipAnchored = false
+    local function anchorAtDip()
+        local c = LocalPlayer.Character
+        local h = c and c:FindFirstChild("HumanoidRootPart")
+        if not h then return end
+        pcall(function()
+            h.AssemblyLinearVelocity  = Vector3.zero
+            h.AssemblyAngularVelocity = Vector3.zero
+            h.CFrame   = CFrame.new(dipPos)
+            h.Anchored = true
+        end)
+        dipAnchored = true
+    end
+
+    local function unanchorFromDip()
+        if not dipAnchored then return end
+        local c = LocalPlayer.Character
+        local h = c and c:FindFirstChild("HumanoidRootPart")
+        if h then
+            pcall(function()
+                h.Anchored = false
+                h.AssemblyLinearVelocity  = Vector3.zero
+                h.AssemblyAngularVelocity = Vector3.zero
+            end)
+        end
+        dipAnchored = false
+    end
+
+    anchorAtDip()
     task.wait(0.4)
 
     for i = 1, 10 do
@@ -4383,18 +4431,9 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
     while tick() - startT < MAX_HOLD do
         if runningCheck and not runningCheck() then break end
 
-        local curChar = LocalPlayer.Character
-        local curHrp  = curChar and curChar:FindFirstChild("HumanoidRootPart")
-        if not curHrp then break end
-
-        pcall(function()
-            curHrp.CFrame = CFrame.new(dipPos)
-            curHrp.AssemblyLinearVelocity  = Vector3.zero
-            curHrp.AssemblyAngularVelocity = Vector3.zero
-        end)
-
         if resultPayload and not resultAt then
             resultAt = tick()
+            unanchorFromDip()
             local arriveAt = tonumber(resultPayload.ArriveAt)
             local remaining = 0
             if arriveAt then
@@ -4410,6 +4449,8 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
 
         task.wait(0.05)
     end
+
+    unanchorFromDip()
 
     if not resultPayload and MystrixHub.Functions.IsCarryingEgg() then
         local forceDeadline = tick() + 5
@@ -4442,6 +4483,8 @@ function MystrixHub.Functions.RunGenericVolcanoDip(runningCheck)
             end
         end
     end
+
+    unanchorFromDip()
 
     if conn1 then conn1:Disconnect() end
     if conn2 then conn2:Disconnect() end
