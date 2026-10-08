@@ -40,7 +40,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v2.44"
+local CURRENT_VERSION  = "v2.1"
 local DISCORD_INVITE   = "46JkThWjPB"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "rap"
@@ -4539,7 +4539,21 @@ function MystrixHub.Functions.ReturnToBase(plot)
     local stagingPos = returnPos + Vector3.new(100, 0, 0)
 
     MystrixHub.Functions.TeleportCharacterTo(stagingPos)
-    task.wait(0.35)
+    task.wait(0.15)
+
+    pcall(function()
+        hrp.AssemblyLinearVelocity  = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.Anchored = true
+    end)
+    task.wait(0.5)
+    pcall(function()
+        hrp.Anchored = false
+        hrp.AssemblyLinearVelocity  = Vector3.zero
+        hrp.AssemblyAngularVelocity = Vector3.zero
+        hrp.CFrame = CFrame.new(stagingPos)
+    end)
+    task.wait(0.1)
 
     local RS = game:GetService("ReplicatedStorage")
     local remotes = RS:FindFirstChild("Remotes")
@@ -4548,7 +4562,7 @@ function MystrixHub.Functions.ReturnToBase(plot)
 
     local dropped = not MystrixHub.Functions.IsCarryingEgg()
     if BasketDrop and not dropped then
-        local dropDeadline = tick() + 5
+        local dropDeadline = tick() + 10
         while tick() < dropDeadline do
             pcall(function() BasketDrop:FireServer() end)
             task.wait(0.25)
@@ -4634,19 +4648,19 @@ function MystrixHub.Functions.ReturnToBase(plot)
     if targetEgg then
         targetEgg:SetAttribute("MystrixStaged", true)
 
-        local ok, pivot = pcall(function() return targetEgg:GetPivot().Position end)
-        if ok and pivot then
-            MystrixHub.Functions.TeleportCharacterTo(pivot + Vector3.new(0, cfg.TravelHoverHeight, 0))
-            task.wait(0.15)
-        end
-
-        MystrixHub.Functions.PickupEgg(targetEgg)
-        local deadline = tick() + 3
+        local deadline = tick() + 5
         while tick() < deadline do
+            if not targetEgg or not targetEgg.Parent then break end
             if MystrixHub.Functions.IsCarryingEgg() then
                 picked = true
                 break
             end
+
+            local ok, pivot = pcall(function() return targetEgg:GetPivot().Position end)
+            if ok and pivot then
+                MystrixHub.Functions.TeleportCharacterTo(pivot + Vector3.new(0, cfg.TravelHoverHeight, 0))
+            end
+
             MystrixHub.Functions.PickupEgg(targetEgg)
             task.wait(0.1)
         end
