@@ -1,18 +1,4 @@
-for i, v in next, getgc() do
-    if type(v) == "function" then
-        if islclosure(v) and not iscclosure(v) then
-            local ok, env = pcall(getfenv, v)
-            if ok and env and env.script and tostring(env.script) == "LocalScript" then
-                pcall(function() env.script.Disabled = true end)
-                pcall(function() env.script:Destroy() end)
-                pcall(setfenv, v, setmetatable({}, {
-                    __index    = function() return nil end,
-                    __newindex = function() end,
-                }))
-            end
-        end
-    end
-end
+
 
 if getgenv().MystrixHub then
     if MystrixHub.ConnectionController and MystrixHub.ConnectionController.Connections then
@@ -54,7 +40,7 @@ local NEBULAUTH_BASE_URL       = "https://api.nebulauth.com"
 local NEBULAUTH_API_TOKEN      = "mk_at_mqRNTHJ9GG0Xc7A1pWPb_OoCpshPMW-OSymq1encWnk"
 local NEBULAUTH_SIGNING_SECRET = "mk_sig_0GCXObajBi8W5Sv4PjJkvrieyXBOAiwehA-iD94OMHA"
 
-local CURRENT_VERSION  = "v2.4"
+local CURRENT_VERSION  = "v2.66"
 local DISCORD_INVITE   = "46JkThWjPB"
 local HUB_LOGO         = "rbxassetid://85997568026025"
 local GAME_FOLDER_NAME = "rap"
